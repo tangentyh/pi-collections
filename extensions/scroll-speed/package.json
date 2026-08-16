@@ -1,0 +1,20 @@
+{
+  "name": "pi-extension-scroll-speed",
+  "version": "0.1.0",
+  "description": "Lines scrolled per mouse-wheel notch in pi fullscreen mode",
+  "keywords": ["pi-package", "pi-extension", "tui"],
+  "license": "MIT",
+  "type": "module",
+  "pi": {
+    "extensions": ["./index.ts"]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^0.84.1",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0"
+  },
+  "files": ["index.ts", "README.md"]
+}

@@ -1,0 +1,17 @@
+{
+  "name": "pi-collections",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Curated pi collections: distributable extension packages and themes",
+  "workspaces": ["extensions/*"],
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^0.84.1",
+    "@earendil-works/pi-tui": "^0.84.1",
+    "@types/node": "^22.0.0",
+    "typebox": "^1.3.11",
+    "typescript": "^5.5.0"
+  }
+}
