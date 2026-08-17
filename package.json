@@ -6,7 +6,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/<you>/pi-collections.git"
+    "url": "git+https://github.com/tangentyh/pi-collections.git"
   },
   "workspaces": ["extensions/*"],
   "pi": {

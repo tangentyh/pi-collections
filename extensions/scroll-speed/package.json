@@ -6,10 +6,10 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/<you>/pi-collections.git",
+    "url": "git+https://github.com/tangentyh/pi-collections.git",
     "directory": "extensions/scroll-speed"
   },
-  "homepage": "https://github.com/<you>/pi-collections/tree/main/extensions/scroll-speed",
+  "homepage": "https://github.com/tangentyh/pi-collections/tree/main/extensions/scroll-speed",
   "type": "module",
   "pi": {
     "extensions": ["./scroll-speed.ts"]

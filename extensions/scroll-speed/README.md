@@ -9,7 +9,7 @@ constant in `scroll-speed.ts`.
 
 ```bash
 pi install ./extensions/scroll-speed                         # local
-pi install git:github.com/<you>/pi-collections               # whole repo (root manifest loads all extensions)
+pi install git:github.com/tangentyh/pi-collections               # whole repo (root manifest loads all extensions)
 pi install npm:pi-extension-scroll-speed                     # npm (if published)
 ```
 

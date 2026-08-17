@@ -6,10 +6,10 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/<you>/pi-collections.git",
+    "url": "git+https://github.com/tangentyh/pi-collections.git",
     "directory": "extensions/focus-aware-blinking-cursor-and-border"
   },
-  "homepage": "https://github.com/<you>/pi-collections/tree/main/extensions/focus-aware-blinking-cursor-and-border",
+  "homepage": "https://github.com/tangentyh/pi-collections/tree/main/extensions/focus-aware-blinking-cursor-and-border",
   "type": "module",
   "pi": {
     "extensions": ["./focus-aware-blinking-cursor-and-border.ts"]

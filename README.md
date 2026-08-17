@@ -4,7 +4,7 @@ A **pi extension monorepo** for development: an [npm workspace](https://docs.npm
 
 ```bash
 pi install ./extensions/scroll-speed                        # local
-pi install git:github.com/<you>/pi-collections              # whole repo: root manifest loads every extension
+pi install git:github.com/tangentyh/pi-collections              # whole repo: root manifest loads every extension
 pi install npm:pi-extension-scroll-speed                    # one extension, if published
 ```
 
