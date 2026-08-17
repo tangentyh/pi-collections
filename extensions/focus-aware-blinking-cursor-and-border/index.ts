@@ -32,7 +32,7 @@ const FOCUS_OUT = "\x1b[O";
  * Install: this directory is a pi package (see package.json) — install it
  * with `pi install ./extensions/focus-aware-blinking-cursor-and-border`,
  * via `pi install git:...`/npm, or by adding it to the "packages" array in
- * settings.json. For development, the repo's install.sh symlinks the whole
+ * settings.json. For development, the repo symlinks the whole
  * extensions/ tree into ~/.pi/agent/extensions/, where pi auto-discovers
  * each subdirectory's index.ts.
  *

@@ -8,9 +8,14 @@ edit `WHEEL_LINES` in `index.ts` to tune it.
 
 ```bash
 pi install ./extensions/scroll-speed                         # local
-pi install git:github.com/<you>/pi-collections/extensions/scroll-speed  # git
+pi install git:github.com/<you>/pi-collections               # whole repo (root manifest loads all extensions)
 pi install npm:pi-extension-scroll-speed                     # npm (if published)
 ```
+
+> pi's git sources clone a whole repository, so this package cannot be
+> installed via `git:.../pi-collections/extensions/scroll-speed`. To install
+> just this extension from the repo, clone it and `pi install` the
+> subdirectory locally, or publish it to npm.
 
 Or add it to the `packages` array in `~/.pi/agent/settings.json`:
 

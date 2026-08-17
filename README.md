@@ -1,54 +1,32 @@
 # pi-collections
 
-Curated collections of [pi](https://github.com/earendil-works/pi-coding-agent) resources: extensions and themes.
-
-## Collections
-
-| Collection  | Directory       | Installs to            |
-|-------------|-----------------|------------------------|
-| Extensions  | `extensions/`   | `~/.pi/agent/extensions/` (dev symlink) |
-| Themes      | `themes/`       | `~/.pi/agent/themes/`     |
-
-## Extensions
-
-Every extension in `extensions/` is its own **distributable pi package**
-(own `package.json` with a `pi` manifest, tagged `pi-package`), so each can
-be installed, shared, and updated independently:
+A **pi extension monorepo** for development: an [npm workspace](https://docs.npmjs.com/cli/v10/using-npm/workspaces) where each extension in `extensions/` is its own **distributable pi package** — own `package.json` with a `pi` manifest and the `pi-package` keyword. The repo root is itself a distributable package that bundles every extension (`pi install .`), and each subdirectory stays independently installable:
 
 ```bash
 pi install ./extensions/scroll-speed                        # local
-pi install git:github.com/<you>/pi-collections/extensions/scroll-speed
-pi install npm:pi-extension-scroll-speed                    # if published
+pi install git:github.com/<you>/pi-collections              # whole repo: root manifest loads every extension
+pi install npm:pi-extension-scroll-speed                    # one extension, if published
 ```
+
+> pi's git sources clone a whole repository, so there is no
+> `git:.../pi-collections/extensions/scroll-speed` form. To install a single
+> extension from the repo, use a local path or publish it to npm (see
+> [extensions/README.md](extensions/README.md)).
 
 | Package | Description |
 |---------|-------------|
 | `focus-aware-blinking-cursor-and-border/` | Blinking cursor when focused; border dims when the terminal loses focus |
 | `scroll-speed/` | Lines per mouse-wheel notch in fullscreen mode |
 
-For development, `./install.sh` symlinks the whole `extensions/` tree into
-`~/.pi/agent/extensions/`, where pi auto-discovers each `*/index.ts` and
-hot-reloads them with `/reload`.
+## Development
 
-## Install
+The repo is an npm workspace: one `npm install` at the root installs
+hoisted devDependencies for all packages, and `npm run typecheck` checks
+everything.
 
-```bash
-./install.sh          # symlink all collections into ~/.pi/agent/
-./install.sh extensions  # or just one collection
-```
-
-Changes to extension files take effect in a running pi with `/reload`.
-
-## Type-checking extensions
-
-```bash
-npm install
-npm run typecheck
-```
-
-The repo is an npm workspace: `extensions/*` are packages, and one `npm
-install` at the root installs their devDependencies (hoisted) for
-type-checking.
+For a dev loop, install a local path — `pi install` records it in
+`~/.pi/agent/settings.json` without copying, so edits to
+`extensions/<name>/index.ts` take effect in a running pi with `/reload`.
 
 ## Security
 

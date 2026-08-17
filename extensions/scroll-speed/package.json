@@ -4,9 +4,19 @@
   "description": "Lines scrolled per mouse-wheel notch in pi fullscreen mode",
   "keywords": ["pi-package", "pi-extension", "tui"],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/<you>/pi-collections.git",
+    "directory": "extensions/scroll-speed"
+  },
+  "homepage": "https://github.com/<you>/pi-collections/tree/main/extensions/scroll-speed",
   "type": "module",
   "pi": {
     "extensions": ["./index.ts"]
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p ../..",
+    "prepublishOnly": "npm run typecheck"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*"
@@ -16,5 +26,5 @@
     "@types/node": "^22.0.0",
     "typescript": "^5.5.0"
   },
-  "files": ["index.ts", "README.md"]
+  "files": ["index.ts", "README.md", "LICENSE"]
 }

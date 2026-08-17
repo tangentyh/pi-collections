@@ -1,11 +1,21 @@
 {
   "name": "pi-collections",
   "version": "0.1.0",
-  "private": true,
-  "description": "Curated pi collections: distributable extension packages and themes",
+  "description": "Pi extension monorepo",
+  "keywords": ["pi-package", "pi-extension"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/<you>/pi-collections.git"
+  },
   "workspaces": ["extensions/*"],
+  "pi": {
+    "extensions": ["./extensions/*/index.ts"]
+  },
+  "files": ["extensions/", "README.md", "LICENSE"],
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run typecheck"
   },
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "^0.84.1",

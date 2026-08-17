@@ -13,18 +13,35 @@ be shared via npm or git and installed with `pi install`.
 
 ```bash
 pi install ./extensions/scroll-speed                        # from this repo
-pi install git:github.com/<you>/pi-collections/extensions/scroll-speed
 pi install npm:pi-extension-scroll-speed                    # if published
 ```
 
-Or add it to `"packages"` in `~/.pi/agent/settings.json`. See the
+Or add it to `"packages"` in `~/.pi/agent/settings.json`. The repo root's
+`pi` manifest also bundles every extension here into one package
+(`pi install .` or `pi install git:github.com/<you>/pi-collections`), while
+each subdirectory stays independently installable.
+
+> pi's git sources clone a whole repository — there is no
+> `git:.../pi-collections/extensions/scroll-speed` form. For a single
+> extension over git, clone the repo and `pi install` its subdirectory
+> locally, or publish the package to npm.
+
+See the
 [pi packages docs](https://github.com/earendil-works/pi-coding-agent/blob/main/docs/packages.md)
 and [extensions docs](https://github.com/earendil-works/pi-coding-agent/blob/main/docs/extensions.md).
 
 ## Development workflow
 
-`../install.sh` symlinks this whole directory to `~/.pi/agent/extensions/`,
-where pi auto-discovers each `*/index.ts` and hot-reloads it with `/reload`.
+Install the extension(s) you're working on with `pi install` from the
+repo root. A local path is added to `~/.pi/agent/settings.json` without
+copying, so edits to `extensions/<name>/index.ts` take effect in a running
+pi with `/reload`:
+
+```bash
+pi install ./extensions/scroll-speed
+pi install ./extensions/focus-aware-blinking-cursor-and-border
+```
+
 Running pi in fullscreen (alt-screen) mode is required by both extensions.
 
 ```bash

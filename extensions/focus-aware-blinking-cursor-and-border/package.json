@@ -4,9 +4,19 @@
   "description": "Blinking cursor when focused; border dims when the terminal loses focus (pi TUI)",
   "keywords": ["pi-package", "pi-extension", "tui"],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/<you>/pi-collections.git",
+    "directory": "extensions/focus-aware-blinking-cursor-and-border"
+  },
+  "homepage": "https://github.com/<you>/pi-collections/tree/main/extensions/focus-aware-blinking-cursor-and-border",
   "type": "module",
   "pi": {
     "extensions": ["./index.ts"]
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p ../..",
+    "prepublishOnly": "npm run typecheck"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",
@@ -18,5 +28,5 @@
     "@types/node": "^22.0.0",
     "typescript": "^5.5.0"
   },
-  "files": ["index.ts", "README.md"]
+  "files": ["index.ts", "README.md", "LICENSE"]
 }
