@@ -6,8 +6,8 @@ A **development-only npm workspace** that collects [pi](https://github.com/earen
 
 | Package | Description |
 |---------|-------------|
-| [pi-scroll-speed](extensions/scroll-speed) | Lines scrolled per mouse-wheel notch in pi fullscreen mode |
 | [pi-focus-aware-blinking-cursor](extensions/focus-aware-blinking-cursor-and-border) | Blinking cursor when focused; border dims when the terminal loses focus |
+| [pi-scroll-speed](extensions/scroll-speed) | Lines scrolled per mouse-wheel notch in pi fullscreen mode |
 
 Each package has its own `README.md` and `LICENSE` (MIT) in its directory — click the name to explore.
 

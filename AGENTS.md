@@ -17,6 +17,18 @@ Conventions for AI agents and humans working in this repo. The repo is a
   - `workspaces: ["extensions/*"]` so one `npm install` at the root installs everything
 - `tsconfig.json` — shared strict TypeScript config (`tsc --noEmit`), includes `extensions/**/*.ts`
 
+## Extensions
+
+Currently in the collection:
+
+- `focus-aware-blinking-cursor-and-border/` → npm `pi-focus-aware-blinking-cursor` —
+  blinking cursor when focused; border dims when the terminal loses focus
+- `scroll-speed/` → npm `pi-scroll-speed` — lines scrolled per mouse-wheel notch in pi
+  fullscreen mode
+
+Keep this list in sync with the table in `README.md` (same order, names, descriptions).
+When adding an extension, add it to both.
+
 ## Dev loop
 
 ```bash
