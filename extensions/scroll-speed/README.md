@@ -1,8 +1,9 @@
 # pi-extension-scroll-speed
 
 Sets the lines scrolled per mouse-wheel notch in pi fullscreen mode
-(default is 1). With this extension, one wheel notch scrolls **5** lines —
-edit `WHEEL_LINES` in `scroll-speed.ts` to tune it.
+(default is 1). With this extension, one wheel notch scrolls **5** lines by
+default — tune it with a setting, a CLI flag, or the `DEFAULT_WHEEL_LINES`
+constant in `scroll-speed.ts`.
 
 ## Install
 
@@ -24,6 +25,30 @@ Or add it to the `packages` array in `~/.pi/agent/settings.json`:
   "packages": ["./extensions/scroll-speed"]
 }
 ```
+
+## Configuration
+
+Set `scrollSpeed.wheelLines` in global settings
+(`~/.pi/agent/settings.json`) or project settings (`.pi/settings.json`;
+honored only when the project is trusted):
+
+```json
+{
+  "scrollSpeed": { "wheelLines": 3 }
+}
+```
+
+Per-invocation override via CLI flag:
+
+```bash
+pi --wheel-lines 8
+```
+
+Resolution order (first hit wins): `--wheel-lines` flag → project
+`scrollSpeed.wheelLines` → global `scrollSpeed.wheelLines` →
+`DEFAULT_WHEEL_LINES` in `scroll-speed.ts` (5). Values must be positive
+integers; anything else is ignored. Changes require a pi restart (or
+`/reload`) to take effect.
 
 ## Notes
 
