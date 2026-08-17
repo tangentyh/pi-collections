@@ -1,5 +1,5 @@
 {
-  "name": "pi-extension-focus-aware-blinking-cursor",
+  "name": "pi-focus-aware-blinking-cursor",
   "version": "0.1.0",
   "description": "Blinking cursor when focused; border dims when the terminal loses focus (pi TUI)",
   "keywords": ["pi-package", "pi-extension", "tui"],

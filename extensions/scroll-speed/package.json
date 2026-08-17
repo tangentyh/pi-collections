@@ -1,5 +1,5 @@
 {
-  "name": "pi-extension-scroll-speed",
+  "name": "pi-scroll-speed",
   "version": "0.1.0",
   "description": "Lines scrolled per mouse-wheel notch in pi fullscreen mode",
   "keywords": ["pi-package", "pi-extension", "tui"],

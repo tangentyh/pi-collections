@@ -1,4 +1,4 @@
-# pi-extension-scroll-speed
+# pi-scroll-speed
 
 Sets the lines scrolled per mouse-wheel notch in pi fullscreen mode
 (default is 1). With this extension, one wheel notch scrolls **5** lines by
@@ -10,7 +10,7 @@ constant in `scroll-speed.ts`.
 ```bash
 pi install ./extensions/scroll-speed                         # local
 pi install git:github.com/tangentyh/pi-collections               # whole repo (root manifest loads all extensions)
-pi install npm:pi-extension-scroll-speed                     # npm (if published)
+pi install npm:pi-scroll-speed                     # npm (if published)
 ```
 
 > pi's git sources clone a whole repository, so this package cannot be

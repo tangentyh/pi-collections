@@ -5,13 +5,13 @@ A **pi extension monorepo** for development: an [npm workspace](https://docs.npm
 ```bash
 pi install ./extensions/scroll-speed                        # local
 pi install git:github.com/tangentyh/pi-collections              # whole repo: root manifest loads every extension
-pi install npm:pi-extension-scroll-speed                    # one extension, if published
+pi install npm:pi-scroll-speed                    # one extension, if published
 ```
 
 > pi's git sources clone a whole repository, so there is no
 > `git:.../pi-collections/extensions/scroll-speed` form. To install a single
-> extension from the repo, use a local path or publish it to npm (see
-> [extensions/README.md](extensions/README.md)).
+> extension from the repo, use a local path, or publish the extension's
+> directory to npm independently.
 
 | Package | Description |
 |---------|-------------|

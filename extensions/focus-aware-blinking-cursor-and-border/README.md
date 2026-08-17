@@ -1,4 +1,4 @@
-# pi-extension-focus-aware-blinking-cursor
+# pi-focus-aware-blinking-cursor
 
 Blinking cursor + focused/unfocused distinction for the pi TUI:
 
@@ -25,7 +25,7 @@ Blinking cursor + focused/unfocused distinction for the pi TUI:
 ```bash
 pi install ./extensions/focus-aware-blinking-cursor-and-border   # local
 pi install git:github.com/tangentyh/pi-collections                    # whole repo (root manifest loads all extensions)
-pi install npm:pi-extension-focus-aware-blinking-cursor           # npm (if published)
+pi install npm:pi-focus-aware-blinking-cursor           # npm (if published)
 ```
 
 > pi's git sources clone a whole repository, so this package cannot be
