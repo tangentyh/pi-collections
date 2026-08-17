@@ -20,6 +20,11 @@ const FOCUS_OUT = "\x1b[O";
  *   dynamic color (thinking level / bash mode).
  * - Unfocused: cursor hidden entirely; border dimmed.
  *
+ * The blink phase is computed from elapsed time at render time, and resets
+ * on cursor movement (typing, arrows, word jumps like option+f, scrolling)
+ * or refocus, so the cursor reappears immediately instead of waiting out
+ * the current "off" half of the cycle.
+ *
  * "Focused" is two independent signals, both required for the blink:
  * - TUI focus (`Editor.focused`): the input editor is the active component
  *   (loses focus while selectors/overlays are open).
@@ -52,7 +57,11 @@ export default function (pi: ExtensionAPI) {
 	const setTerminalFocused = (focused: boolean) => {
 		if (terminalFocused === focused) return;
 		terminalFocused = focused;
-		if (!focused) currentEditor?.hideCursor();
+		if (focused) {
+			// Terminal window regained focus: show the cursor immediately
+			// instead of waiting out the current blink phase.
+			currentEditor?.poke();
+		}
 		activeTui?.requestRender();
 	};
 
@@ -102,7 +111,8 @@ export default function (pi: ExtensionAPI) {
 			if (!blinkTimer) {
 				blinkTimer = setInterval(() => {
 					if (!currentEditor?.focused || !terminalFocused) return;
-					currentEditor.tickBlink();
+					// The blink phase is derived from elapsed time inside render;
+					// this tick only drives the re-render.
 					activeTui?.requestRender();
 				}, BLINK_MS);
 				blinkTimer.unref?.();
@@ -129,9 +139,15 @@ export default function (pi: ExtensionAPI) {
 }
 
 class BlinkingCursorEditor extends CustomEditor {
-	private cursorVisible = true;
 	private dimBorder: (s: string) => string;
 	private getTerminalFocused: () => boolean;
+	// Blink phase: visible for BLINK_MS after phaseStart, hidden for
+	// BLINK_MS, repeating. phaseStart is reset to "now" on cursor movement
+	// or refocus so the cursor reappears immediately.
+	private phaseStart: number;
+	private lastCursor = { line: -1, col: -1 };
+	private lastTextLength = -1;
+	private lastFocused = false;
 
 	constructor(
 		tui: TUI,
@@ -143,19 +159,40 @@ class BlinkingCursorEditor extends CustomEditor {
 		super(tui, theme, keybindings, { paddingX: 0 });
 		this.dimBorder = (s: string) => ctx.ui.theme.fg("dim", s);
 		this.getTerminalFocused = getTerminalFocused;
+		this.phaseStart = performance.now();
 	}
 
-	tickBlink() {
-		this.cursorVisible = !this.cursorVisible;
+	/** Reset the blink phase so the cursor is visible immediately. */
+	poke() {
+		this.phaseStart = performance.now();
 	}
 
-	/** Freeze with the fake cursor hidden (terminal window lost focus). */
-	hideCursor() {
-		this.cursorVisible = false;
+	private cursorVisibleAt(now: number): boolean {
+		return Math.floor((now - this.phaseStart) / BLINK_MS) % 2 === 0;
 	}
 
 	override render(width: number): string[] {
 		const focused = this.focused && this.getTerminalFocused();
+
+		// Cursor moved (typing, arrows, word jumps like option+f, scrolling)
+		// or the text changed (backspace at line start, undo, paste): show
+		// the cursor right away with a fresh blink phase, even mid-cycle.
+		const cursor = this.getCursor();
+		const textLength = this.getText().length;
+		if (
+			cursor.line !== this.lastCursor.line ||
+			cursor.col !== this.lastCursor.col ||
+			textLength !== this.lastTextLength
+		) {
+			this.lastCursor = cursor;
+			this.lastTextLength = textLength;
+			this.phaseStart = performance.now();
+		}
+		// TUI focus returned (e.g. a selector/overlay closed): same reset.
+		if (this.focused && !this.lastFocused) {
+			this.phaseStart = performance.now();
+		}
+		this.lastFocused = this.focused;
 
 		// pi sets borderColor dynamically (thinking level, bash mode) via
 		// updateEditorBorderColor(); overriding it here would flatten every
@@ -172,7 +209,7 @@ class BlinkingCursorEditor extends CustomEditor {
 		// blink. The fake cursor is the only reverse-video segment the editor
 		// emits (`\x1b[7m<grapheme>\x1b[0m`); replace it with the plain
 		// character so the layout (width/padding) stays identical.
-		if (!focused || !this.cursorVisible) {
+		if (!focused || !this.cursorVisibleAt(performance.now())) {
 			for (let i = 0; i < lines.length; i++) {
 				lines[i] = lines[i]!.replace(/\x1b\[7m([\s\S]*?)\x1b\[0m/g, (_m, ch) => ch);
 			}

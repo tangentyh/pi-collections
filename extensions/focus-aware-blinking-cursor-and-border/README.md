@@ -5,6 +5,10 @@ Blinking cursor + focused/unfocused distinction for the pi TUI:
 - **Focused**: fake cursor cell blinks on/off at ~2 Hz; border keeps pi's
   dynamic color (thinking level / bash mode).
 - **Unfocused**: cursor hidden entirely; border dimmed.
+- **Immediate on movement**: the blink phase resets when the cursor moves
+  (typing, arrows, word jumps like option+f, scrolling) or when focus
+  returns, so the cursor reappears instantly instead of waiting out the
+  current "off" half of the cycle.
 
 "Focused" is two independent signals, both required for the blink:
 
