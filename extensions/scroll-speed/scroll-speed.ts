@@ -13,10 +13,10 @@ const DEFAULT_WHEEL_LINES = 5;
 
 /**
  * This directory is a distributable pi package (see package.json): install
- * it with `pi install ./extensions/scroll-speed`, via `pi install
- * git:...`/npm, or by adding it to the "packages" array in settings.json.
- * The repo root's `pi` manifest also declares this package's
- * `scroll-speed.ts` entry file directly for development.
+ * it with `pi install ./extensions/scroll-speed`, via npm, or by adding it
+ * to the "packages" array in settings.json. The repo root is a development
+ * workspace only (never published, no `pi` manifest) — it never loads this
+ * file directly.
  */
 
 /**

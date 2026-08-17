@@ -9,13 +9,13 @@ constant in `scroll-speed.ts`.
 
 ```bash
 pi install ./extensions/scroll-speed                         # local
-pi install git:github.com/tangentyh/pi-collections               # whole repo (root manifest loads all extensions)
 pi install npm:pi-scroll-speed                     # npm (if published)
 ```
 
-> pi's git sources clone a whole repository, so this package cannot be
-> installed via `git:.../pi-collections/extensions/scroll-speed`. To install
-> just this extension from the repo, clone it and `pi install` the
+> pi's git sources clone a whole repository and install what its root
+> `package.json` declares; the pi-collections root is never published and
+> declares no `pi` manifest, so there is no `git:.../pi-collections/...` form. To
+> install just this extension from the repo, clone it and `pi install` the
 > subdirectory locally, or publish it to npm.
 
 Or add it to the `packages` array in `~/.pi/agent/settings.json`:

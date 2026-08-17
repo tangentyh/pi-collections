@@ -1,26 +1,18 @@
 {
   "name": "pi-collections",
   "version": "0.1.0",
-  "description": "Pi extension monorepo",
-  "keywords": ["pi-package", "pi-extension"],
+  "description": "Private npm workspace for developing pi extensions (root is a dev wrapper only, never published)",
+  "private": true,
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/tangentyh/pi-collections.git"
   },
   "workspaces": ["extensions/*"],
-  "pi": {
-    "extensions": [
-      "./extensions/scroll-speed/scroll-speed.ts",
-      "./extensions/focus-aware-blinking-cursor-and-border/focus-aware-blinking-cursor-and-border.ts"
-    ]
-  },
-  "files": ["extensions/", "README.md", "LICENSE"],
   "scripts": {
     "typecheck": "tsc --noEmit",
     "start:scroll-speed": "pi -e ./extensions/scroll-speed/scroll-speed.ts",
-    "start:cursor": "pi -e ./extensions/focus-aware-blinking-cursor-and-border/focus-aware-blinking-cursor-and-border.ts",
-    "prepublishOnly": "npm run typecheck"
+    "start:cursor": "pi -e ./extensions/focus-aware-blinking-cursor-and-border/focus-aware-blinking-cursor-and-border.ts"
   },
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "^0.84.1",
