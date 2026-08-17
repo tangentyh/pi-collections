@@ -2,7 +2,7 @@
 
 Sets the lines scrolled per mouse-wheel notch in pi fullscreen mode
 (default is 1). With this extension, one wheel notch scrolls **5** lines —
-edit `WHEEL_LINES` in `index.ts` to tune it.
+edit `WHEEL_LINES` in `scroll-speed.ts` to tune it.
 
 ## Install
 

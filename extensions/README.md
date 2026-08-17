@@ -34,7 +34,7 @@ and [extensions docs](https://github.com/earendil-works/pi-coding-agent/blob/mai
 
 Install the extension(s) you're working on with `pi install` from the
 repo root. A local path is added to `~/.pi/agent/settings.json` without
-copying, so edits to `extensions/<name>/index.ts` take effect in a running
+copying, so edits to `extensions/<name>/<name>.ts` take effect in a running
 pi with `/reload`:
 
 ```bash

@@ -26,7 +26,7 @@ everything.
 
 For a dev loop, install a local path — `pi install` records it in
 `~/.pi/agent/settings.json` without copying, so edits to
-`extensions/<name>/index.ts` take effect in a running pi with `/reload`.
+`extensions/<name>/<name>.ts` take effect in a running pi with `/reload`.
 
 ## Security
 

@@ -10,7 +10,10 @@
   },
   "workspaces": ["extensions/*"],
   "pi": {
-    "extensions": ["./extensions/*/index.ts"]
+    "extensions": [
+      "./extensions/scroll-speed/scroll-speed.ts",
+      "./extensions/focus-aware-blinking-cursor-and-border/focus-aware-blinking-cursor-and-border.ts"
+    ]
   },
   "files": ["extensions/", "README.md", "LICENSE"],
   "scripts": {
