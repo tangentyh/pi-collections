@@ -18,6 +18,8 @@
   "files": ["extensions/", "README.md", "LICENSE"],
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "start:scroll-speed": "pi -e ./extensions/scroll-speed/scroll-speed.ts",
+    "start:cursor": "pi -e ./extensions/focus-aware-blinking-cursor-and-border/focus-aware-blinking-cursor-and-border.ts",
     "prepublishOnly": "npm run typecheck"
   },
   "devDependencies": {

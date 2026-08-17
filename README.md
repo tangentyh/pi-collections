@@ -28,6 +28,30 @@ For a dev loop, install a local path — `pi install` records it in
 `~/.pi/agent/settings.json` without copying, so edits to
 `extensions/<name>/<name>.ts` take effect in a running pi with `/reload`.
 
+## Loading an extension dynamically
+
+Skip installation and load an extension for the current session only:
+
+```bash
+pi -e ./extensions/scroll-speed/scroll-speed.ts      # load once at startup
+```
+
+To load an extension into an already-running pi:
+
+1. `pi install` the extension (or drop it into `~/.pi/agent/extensions/` or
+   `.pi/extensions/`), then
+2. run `/reload` in pi to hot-reload extensions without restarting.
+
+```bash
+pi install ./extensions/scroll-speed                  # persist in settings.json
+# then, inside pi:
+/reload                                              # hot-reload extensions
+```
+
+Extension code in the auto-discovered locations (`~/.pi/agent/extensions/`,
+`.pi/extensions/`) is re-read on every `/reload`, so edited files take effect
+immediately.
+
 ## Security
 
 > Extensions run with your full system permissions and can execute arbitrary
