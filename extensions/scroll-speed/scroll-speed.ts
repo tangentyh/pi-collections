@@ -11,36 +11,6 @@ import {
 /** Default lines scrolled per mouse-wheel notch in fullscreen mode (pi's built-in default is 1). */
 const DEFAULT_WHEEL_LINES = 5;
 
-/**
- * This directory is a distributable pi package (see package.json): install
- * it with `pi install ./extensions/scroll-speed`, via npm, or by adding it
- * to the "packages" array in settings.json. The repo root is a development
- * workspace only (never published, no `pi` manifest) — it never loads this
- * file directly.
- */
-
-/**
- * Configuration. The wheel lines are resolved per session in this order
- * (first hit wins):
- *
- * 1. `--wheel-lines <n>` CLI flag
- * 2. `scrollSpeed.wheelLines` in project settings (`.pi/settings.json`,
- *    only honored for trusted projects)
- * 3. `scrollSpeed.wheelLines` in global settings (`~/.pi/agent/settings.json`
- *    or `$PI_CODING_AGENT_DIR`)
- * 4. `DEFAULT_WHEEL_LINES` above
- *
- * Example settings.json:
- *
- * ```json
- * {
- *   "scrollSpeed": { "wheelLines": 3 }
- * }
- * ```
- *
- * Unknown settings keys are ignored by pi, so this key is safe to add.
- */
-
 /** The `scrollSpeed` key read from settings.json. */
 interface ScrollSpeedSettings {
 	wheelLines?: unknown;
@@ -113,10 +83,9 @@ export default function (pi: ExtensionAPI): void {
 
 		const wheelLines = resolveWheelLines(pi, ctx);
 
-		// Capture the previously registered editor factory (if any) BEFORE
-		// replacing it. Other extensions (e.g. focus-aware-blinking-cursor-and-border.ts) install their
-		// own editor component; replacing it here would silently undo their
-		// behavior, so delegate to it instead of creating a plain editor.
+		// Other extensions (e.g. focus-aware-blinking-cursor-and-border) may
+		// have registered their own editor factory; capture and delegate to
+		// it instead of replacing it.
 		const previousFactory = ctx.ui.getEditorComponent();
 
 		ctx.ui.setEditorComponent((tui, theme, keybindings) => {

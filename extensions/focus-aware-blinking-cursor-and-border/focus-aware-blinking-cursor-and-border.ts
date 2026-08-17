@@ -16,32 +16,11 @@ const FOCUS_OUT = "\x1b[O";
 /**
  * Blinking cursor + focused/unfocused distinction for the pi TUI.
  *
- * - Focused: fake cursor cell blinks on/off at ~2 Hz; border keeps pi's
- *   dynamic color (thinking level / bash mode).
- * - Unfocused: cursor hidden entirely; border dimmed.
- *
- * The blink phase is computed from elapsed time at render time, and resets
- * on cursor movement (typing, arrows, word jumps like option+f, scrolling)
+ * "Focused" is two independent signals, both required for the blink: TUI
+ * focus (`Editor.focused`) and terminal-window focus. The blink phase is
+ * derived from elapsed time at render time and resets on cursor movement
  * or refocus, so the cursor reappears immediately instead of waiting out
  * the current "off" half of the cycle.
- *
- * "Focused" is two independent signals, both required for the blink:
- * - TUI focus (`Editor.focused`): the input editor is the active component
- *   (loses focus while selectors/overlays are open).
- * - Terminal focus: the terminal window itself. pi's TUI consumes the
- *   terminal's focus-in/focus-out sequences internally before extension
- *   input listeners run, so this extension watches raw stdin for them.
- *   In regular (non-fullscreen) mode focus reporting is off and the cursor
- *   blinks regardless of window focus.
- *
- * Install: this directory is a pi package (see package.json) — install it
- * with `pi install ./extensions/focus-aware-blinking-cursor-and-border`,
- * via npm, or by adding it to the "packages" array in settings.json. The
- * repo root is a development workspace only (never published, no `pi`
- * manifest) — it never loads this file directly.
- *
- * Note: this extension delegates to a previously registered editor factory
- * (e.g. from scroll-speed.ts), so the two coexist in any load order.
  */
 export default function (pi: ExtensionAPI) {
 	let blinkTimer: ReturnType<typeof setInterval> | undefined;
@@ -92,10 +71,8 @@ export default function (pi: ExtensionAPI) {
 		terminalFocused = true;
 		attachFocusMonitor();
 
-		// Capture the previously registered editor factory BEFORE replacing
-		// it. Other extensions (e.g. scroll-speed.ts) install their own
-		// editor component; replacing it here would silently undo their
-		// behavior, so delegate to it instead of creating a plain editor.
+		// Other extensions (e.g. scroll-speed) may have registered their own
+		// editor factory; capture and delegate to it instead of replacing it.
 		const previousFactory = ctx.ui.getEditorComponent();
 
 		ctx.ui.setEditorComponent((tui, theme, keybindings) => {
