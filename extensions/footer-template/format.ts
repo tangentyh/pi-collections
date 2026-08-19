@@ -233,12 +233,12 @@ export function getFieldValues(
 /** The default footer template, mirroring pi's built-in footer layout plus the cumulative total-token count. */
 export const DEFAULT_FOOTER_TEMPLATE =
 	"{cwd}{gitBranch}{sessionName}\n" +
-	"{tokenStats} ({totalTokens} total) {contextUsage}{contextTokens}{xp}{modelInfo:right}\n" +
+	"{tokenStats} Σ{totalTokens} {contextUsage}{contextTokens}{xp}{modelInfo:right}\n" +
 	"{extensionStatuses}";
 
 /** The notification format used when no custom template is configured; `{cost}` carries its own currency symbol. */
 export const DEFAULT_RUN_NOTIFICATION_TEMPLATE =
-	"{time} ({elapsedTime} elapsed/{idleTime} idle) — {tokensPerSecond} tok/s, {cost}, {output} out, {input} in, cache r/w {cacheRead}/{cacheWrite}, {totalTokens} total";
+	"{time} ({elapsedTime} elapsed/{idleTime} idle) — {tokensPerSecond} tok/s, {cost}, {output} out, {input} in, cache r/w {cacheRead}/{cacheWrite}, Σ{totalTokens}";
 
 /** Render the per-message throughput notification; an unset template falls back to the default format. */
 export function renderRunNotification(

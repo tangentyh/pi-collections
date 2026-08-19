@@ -12,8 +12,8 @@ trusted) or global settings. Project settings take precedence:
 ```json
 {
   "footerTemplate": {
-    "template": "{cwd}{gitBranch}{sessionName}\n{tokenStats} ({totalTokens} total) {contextUsage}{contextTokens}{xp}{modelInfo:right}\n{extensionStatuses}",
-    "notificationTemplate": "{time} ({elapsedTime} elapsed/{idleTime} idle) — {tokensPerSecond} tok/s, {cost}, {output} out, {input} in, cache r/w {cacheRead}/{cacheWrite}, {totalTokens} total"
+    "template": "{cwd}{gitBranch}{sessionName}\n{tokenStats} Σ{totalTokens} {contextUsage}{contextTokens}{xp}{modelInfo:right}\n{extensionStatuses}",
+    "notificationTemplate": "{time} ({elapsedTime} elapsed/{idleTime} idle) — {tokensPerSecond} tok/s, {cost}, {output} out, {input} in, cache r/w {cacheRead}/{cacheWrite}, Σ{totalTokens}"
   }
 }
 ```
@@ -25,13 +25,13 @@ after `{tokenStats}`:
 
 ```text
 {cwd}{gitBranch}{sessionName}
-{tokenStats} ({totalTokens} total) {contextUsage}{contextTokens}{xp}{modelInfo:right}
+{tokenStats} Σ{totalTokens} {contextUsage}{contextTokens}{xp}{modelInfo:right}
 {extensionStatuses}
 ```
 
 So the stats line shows e.g. `12.3%/200k (24,680)` — the percentage, the
 context window, and the absolute number of tokens currently used — and
-`(68,234 total)` right after the token statistics, the cumulative total
+`Σ68,234` right after the token statistics, the cumulative total
 tokens used across the session.
 
 `{gitBranch}`, `{sessionName}`, and `{xp}` carry their leading separators (see
@@ -109,7 +109,7 @@ Its text is configurable via `notificationTemplate` in the `footerTemplate`
 settings object; without it, this default format is used:
 
 ```text
-{time} ({elapsedTime} elapsed/{idleTime} idle) — {tokensPerSecond} tok/s, {cost}, {output} out, {input} in, cache r/w {cacheRead}/{cacheWrite}, {totalTokens} total
+{time} ({elapsedTime} elapsed/{idleTime} idle) — {tokensPerSecond} tok/s, {cost}, {output} out, {input} in, cache r/w {cacheRead}/{cacheWrite}, Σ{totalTokens}
 ```
 
 Unlike the footer, the notification is rendered from the run-stats fields only
