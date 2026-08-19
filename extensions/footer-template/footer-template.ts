@@ -1,34 +1,118 @@
-import type { AssistantMessage } from "@earendil-works/pi-ai";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { AssistantMessage, Usage } from "@earendil-works/pi-ai";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import {
+	formatElapsedTime,
+	formatRunNotification,
+	getFieldValues,
+	renderTemplate,
+} from "./format.js";
+import { resolveFooterConfiguration } from "./io.js";
+import type { RunStats, SessionUsage, UsageTotals } from "./types.js";
 
 function isAssistantMessage(message: unknown): message is AssistantMessage {
 	if (!message || typeof message !== "object") return false;
-	const role = (message as { role?: unknown }).role;
-	return role === "assistant";
+	return (message as { role?: unknown }).role === "assistant";
 }
 
-function formatElapsedTime(elapsedSeconds: number): string {
-	if (elapsedSeconds < 60) return `${elapsedSeconds.toFixed(1)}s`;
-
-	const totalSeconds = Math.floor(elapsedSeconds);
-	const minutes = Math.floor(totalSeconds / 60);
-	const seconds = totalSeconds % 60;
-	if (minutes < 60) return `${minutes} min ${seconds} s`;
-
-	const hours = Math.floor(minutes / 60);
-	return `${hours} h ${minutes % 60} min ${seconds} s`;
+function createUsageTotals(): UsageTotals {
+	return {
+		input: 0,
+		output: 0,
+		cacheRead: 0,
+		cacheWrite: 0,
+		totalTokens: 0,
+		cost: 0,
+	};
 }
 
-/**
- * Scaffold for a configurable string-template footer.
- *
- * TODO: read `footerTemplate` settings and install a custom footer with
- * `ctx.ui.setFooter()`.
- */
+function addUsage(totals: UsageTotals, usage: Usage | undefined): void {
+	if (!usage) return;
+	totals.input += usage.input || 0;
+	totals.output += usage.output || 0;
+	totals.cacheRead += usage.cacheRead || 0;
+	totals.cacheWrite += usage.cacheWrite || 0;
+	totals.totalTokens += usage.totalTokens || 0;
+	totals.cost += usage.cost?.total || 0;
+}
+
+/** Match the built-in footer: cumulative usage includes every session entry. */
+function computeSessionUsage(ctx: ExtensionContext): SessionUsage {
+	const totals = createUsageTotals();
+	let latestCacheHitRate: number | undefined;
+
+	for (const entry of ctx.sessionManager.getEntries()) {
+		if (entry.type === "message") {
+			if (entry.message.role === "assistant") {
+				addUsage(totals, entry.message.usage);
+				const promptTokens =
+					entry.message.usage.input + entry.message.usage.cacheRead + entry.message.usage.cacheWrite;
+				latestCacheHitRate =
+					promptTokens > 0 ? (entry.message.usage.cacheRead / promptTokens) * 100 : undefined;
+			} else if (entry.message.role === "toolResult") {
+				addUsage(totals, entry.message.usage);
+			}
+		} else if (entry.type === "branch_summary" || entry.type === "compaction") {
+			addUsage(totals, entry.usage);
+		}
+	}
+
+	return { totals, latestCacheHitRate };
+}
+
+function emptyRunStats(): RunStats {
+	return {
+		tokensPerSecond: 0,
+		input: 0,
+		output: 0,
+		cacheRead: 0,
+		cacheWrite: 0,
+		totalTokens: 0,
+		elapsedTime: "0.0s",
+		idleTime: "0.0s",
+	};
+}
+
+function calculateRunStats(messages: readonly unknown[], elapsedMs: number, idleMs: number): RunStats | undefined {
+	const usage = createUsageTotals();
+	for (const message of messages) {
+		if (isAssistantMessage(message)) addUsage(usage, message.usage);
+	}
+	if (usage.output <= 0 || elapsedMs <= 0) return undefined;
+
+	const elapsedSeconds = elapsedMs / 1000;
+	return {
+		tokensPerSecond: usage.output / elapsedSeconds,
+		input: usage.input,
+		output: usage.output,
+		cacheRead: usage.cacheRead,
+		cacheWrite: usage.cacheWrite,
+		totalTokens: usage.totalTokens,
+		elapsedTime: formatElapsedTime(elapsedSeconds),
+		idleTime: formatElapsedTime(idleMs / 1000),
+	};
+}
+
+/** Render pi's footer from a configurable string template. */
 export default function footerTemplate(pi: ExtensionAPI): void {
 	let agentStartMs: number | null = null;
 	let lastAgentEndMs: number | null = null;
 	let idleTimeMs = 0;
+	let runStats = emptyRunStats();
+	let requestFooterRender: (() => void) | undefined;
+	let customFooterInstalled = false;
+
+	// Session entries are append-only, and every usage-bearing append is
+	// accompanied by a message_end, session_compact, or session_tree event. So
+	// the cumulative totals can be cached and invalidated on those events,
+	// instead of rescanning the whole session on every render (i.e. every
+	// keystroke, resize, and setStatus). message_update intentionally does not
+	// invalidate: streaming never touches session entries.
+	let sessionUsageCache: SessionUsage | undefined;
+
+	const getSessionUsage = (ctx: ExtensionContext): SessionUsage => {
+		if (!sessionUsageCache) sessionUsageCache = computeSessionUsage(ctx);
+		return sessionUsageCache;
+	};
 
 	pi.on("agent_start", () => {
 		const now = performance.now();
@@ -39,44 +123,98 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 	pi.on("agent_end", (event, ctx) => {
 		const endedAtMs = performance.now();
 		lastAgentEndMs = endedAtMs;
-		if (!ctx.hasUI) return;
 		if (agentStartMs === null) return;
 
 		const elapsedMs = endedAtMs - agentStartMs;
 		agentStartMs = null;
 		if (elapsedMs <= 0) return;
 
-		let input = 0;
-		let output = 0;
-		let cacheRead = 0;
-		let cacheWrite = 0;
-		let totalTokens = 0;
+		const nextRunStats = calculateRunStats(event.messages, elapsedMs, idleTimeMs);
+		if (!nextRunStats) return;
+		runStats = nextRunStats;
+		requestFooterRender?.();
 
-		for (const message of event.messages) {
-			if (!isAssistantMessage(message)) continue;
-			input += message.usage.input || 0;
-			output += message.usage.output || 0;
-			cacheRead += message.usage.cacheRead || 0;
-			cacheWrite += message.usage.cacheWrite || 0;
-			totalTokens += message.usage.totalTokens || 0;
-		}
+		if (!ctx.hasUI) return;
+		ctx.ui.notify(formatRunNotification(nextRunStats), "info");
+	});
 
-		if (output <= 0) return;
+	// A custom footer is not automatically invalidated by every state change
+	// that affects the built-in footer, so request a redraw for the dynamic
+	// fields while keeping all values computed lazily in render().
+	const requestRender = () => requestFooterRender?.();
+	pi.on("message_update", requestRender);
+	pi.on("session_info_changed", requestRender);
+	pi.on("model_select", requestRender);
+	pi.on("thinking_level_select", requestRender);
 
-		const elapsedSeconds = elapsedMs / 1000;
-		const tokensPerSecond = output / elapsedSeconds;
-		const elapsedTime = formatElapsedTime(elapsedSeconds);
-		const idleTime = formatElapsedTime(idleTimeMs / 1000);
-		const message = `TPS ${tokensPerSecond.toFixed(1)} tok/s. out ${output.toLocaleString()}, in ${input.toLocaleString()}, cache r/w ${cacheRead.toLocaleString()}/${cacheWrite.toLocaleString()}, total ${totalTokens.toLocaleString()}, ${elapsedTime} elapsed after ${idleTime}'s idle`;
-		ctx.ui.notify(message, "info");
+	const invalidateUsageCache = () => {
+		sessionUsageCache = undefined;
+	};
+	pi.on("message_end", () => {
+		invalidateUsageCache();
+		requestRender();
+	});
+	pi.on("session_compact", () => {
+		invalidateUsageCache();
+		requestRender();
+	});
+	pi.on("session_tree", () => {
+		invalidateUsageCache();
+		requestRender();
 	});
 
 	pi.on("session_start", (_event, ctx) => {
 		agentStartMs = null;
 		lastAgentEndMs = performance.now();
 		idleTimeMs = 0;
+		runStats = emptyRunStats();
+		requestFooterRender = undefined;
+		sessionUsageCache = undefined;
 		if (ctx.mode !== "tui") return;
 
-		// TODO: resolve the configured template and render footer placeholders.
+		const configuration = resolveFooterConfiguration(ctx);
+		if (!configuration) {
+			if (customFooterInstalled) {
+				ctx.ui.setFooter(undefined);
+				customFooterInstalled = false;
+			}
+			return;
+		}
+
+		ctx.ui.setFooter((tui, theme, footerData) => {
+			const requestRender = () => tui.requestRender();
+			requestFooterRender = requestRender;
+			const unsubscribeBranchChanges = footerData.onBranchChange(requestRender);
+
+			return {
+				invalidate() {},
+				render(width: number): string[] {
+					const fields = getFieldValues(
+						ctx,
+						footerData,
+						getSessionUsage(ctx),
+						runStats,
+						configuration.autoCompactionEnabled,
+					);
+					return renderTemplate(configuration.template, fields, width, theme);
+				},
+				dispose() {
+					unsubscribeBranchChanges();
+					if (requestFooterRender === requestRender) requestFooterRender = undefined;
+				},
+			};
+		});
+		customFooterInstalled = true;
+	});
+
+	pi.on("session_shutdown", (_event, ctx) => {
+		if (customFooterInstalled) {
+			ctx.ui.setFooter(undefined);
+			customFooterInstalled = false;
+		}
+		agentStartMs = null;
+		lastAgentEndMs = null;
+		requestFooterRender = undefined;
+		sessionUsageCache = undefined;
 	});
 }

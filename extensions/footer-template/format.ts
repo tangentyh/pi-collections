@@ -1,0 +1,165 @@
+import { isAbsolute, relative, resolve, sep } from "node:path";
+import type {
+	ExtensionContext,
+	ReadonlyFooterDataProvider,
+	Theme,
+} from "@earendil-works/pi-coding-agent";
+import { truncateToWidth } from "@earendil-works/pi-tui";
+import type { RunStats, SessionUsage, UsageTotals } from "./types.js";
+
+const FIELD_PATTERN = /\{([A-Za-z][A-Za-z0-9_]*)\}/g;
+
+export function formatElapsedTime(elapsedSeconds: number): string {
+	const secondsValue = Number.isFinite(elapsedSeconds) ? Math.max(0, elapsedSeconds) : 0;
+	if (secondsValue < 60) return `${secondsValue.toFixed(1)}s`;
+
+	const totalSeconds = Math.floor(secondsValue);
+	const minutes = Math.floor(totalSeconds / 60);
+	const seconds = totalSeconds % 60;
+	if (minutes < 60) return `${minutes} min ${seconds} s`;
+
+	const hours = Math.floor(minutes / 60);
+	return `${hours} h ${minutes % 60} min ${seconds} s`;
+}
+
+/** The compact token format used by pi's built-in footer. */
+export function formatTokens(count: number): string {
+	const value = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
+	if (value < 1000) return value.toString();
+	if (value < 10000) return `${(value / 1000).toFixed(1)}k`;
+	if (value < 1000000) return `${Math.round(value / 1000)}k`;
+	if (value < 10000000) return `${(value / 1000000).toFixed(1)}M`;
+	return `${Math.round(value / 1000000)}M`;
+}
+
+export function formatCount(count: number): string {
+	return (Number.isFinite(count) ? Math.max(0, count) : 0).toLocaleString();
+}
+
+export function formatCwdForFooter(cwd: string, home: string | undefined): string {
+	if (!home) return cwd;
+
+	const resolvedCwd = resolve(cwd);
+	const resolvedHome = resolve(home);
+	const relativeToHome = relative(resolvedHome, resolvedCwd);
+	const isInsideHome =
+		relativeToHome === "" ||
+		(relativeToHome !== ".." && !relativeToHome.startsWith(`..${sep}`) && !isAbsolute(relativeToHome));
+	if (!isInsideHome) return cwd;
+	return relativeToHome === "" ? "~" : `~${sep}${relativeToHome}`;
+}
+
+function sanitizeStatusText(text: string): string {
+	// Keep ANSI styling from ctx.ui.setStatus(), matching pi's built-in footer.
+	return text.replace(/[\r\n\t]/g, " ").replace(/ +/g, " ").trim();
+}
+
+export function formatExtensionStatuses(footerData: ReadonlyFooterDataProvider): string {
+	return Array.from(footerData.getExtensionStatuses().entries())
+		.sort(([a], [b]) => a.localeCompare(b))
+		.map(([, text]) => sanitizeStatusText(text))
+		.filter(Boolean)
+		.join(" ");
+}
+
+export function formatModelInfo(ctx: ExtensionContext, footerData: ReadonlyFooterDataProvider): string {
+	const model = ctx.model;
+	const modelName = model?.id || "no-model";
+	let modelInfo = modelName;
+
+	if (model?.reasoning) {
+		const thinkingLevel = ctx.thinkingLevel || "off";
+		modelInfo = thinkingLevel === "off" ? `${modelName} • thinking off` : `${modelName} • ${thinkingLevel}`;
+	}
+
+	if (footerData.getAvailableProviderCount() > 1 && model) {
+		modelInfo = `(${model.provider}) ${modelInfo}`;
+	}
+	return modelInfo;
+}
+
+export function formatTokenStats(
+	totals: UsageTotals,
+	latestCacheHitRate: number | undefined,
+	usingSubscription: boolean,
+): string {
+	const tokenStats: string[] = [];
+	if (totals.input) tokenStats.push(`↑${formatTokens(totals.input)}`);
+	if (totals.output) tokenStats.push(`↓${formatTokens(totals.output)}`);
+	if (totals.cacheRead) tokenStats.push(`R${formatTokens(totals.cacheRead)}`);
+	if (totals.cacheWrite) tokenStats.push(`W${formatTokens(totals.cacheWrite)}`);
+	if ((totals.cacheRead > 0 || totals.cacheWrite > 0) && latestCacheHitRate !== undefined) {
+		tokenStats.push(`CH${latestCacheHitRate.toFixed(1)}%`);
+	}
+	if (totals.cost || usingSubscription) {
+		tokenStats.push(`$${totals.cost.toFixed(3)}${usingSubscription ? " (sub)" : ""}`);
+	}
+	return tokenStats.join(" ");
+}
+
+export function getFieldValues(
+	ctx: ExtensionContext,
+	footerData: ReadonlyFooterDataProvider,
+	sessionUsage: SessionUsage,
+	runStats: RunStats,
+	autoCompactionEnabled: boolean,
+): Record<string, string> {
+	const { totals, latestCacheHitRate } = sessionUsage;
+	const model = ctx.model;
+	const contextUsage = ctx.getContextUsage();
+	const contextWindow = contextUsage?.contextWindow ?? model?.contextWindow ?? 0;
+	const percent = contextUsage?.percent === null ? "?" : (contextUsage?.percent ?? 0).toFixed(1);
+	const usingSubscription = model?.provider === "kimi-coding";
+
+	const tokenStats = formatTokenStats(totals, latestCacheHitRate, usingSubscription);
+
+	return {
+		cwd: formatCwdForFooter(ctx.sessionManager.getCwd(), process.env.HOME || process.env.USERPROFILE),
+		gitBranch: footerData.getGitBranch() || "",
+		sessionName: ctx.sessionManager.getSessionName() || "",
+		tokensPerSecond: runStats.tokensPerSecond.toFixed(1),
+		input: formatCount(runStats.input),
+		output: formatCount(runStats.output),
+		cacheRead: formatCount(runStats.cacheRead),
+		cacheWrite: formatCount(runStats.cacheWrite),
+		totalTokens: formatCount(runStats.totalTokens),
+		elapsedTime: runStats.elapsedTime,
+		idleTime: runStats.idleTime,
+		latestCacheHitRate: latestCacheHitRate === undefined ? "" : latestCacheHitRate.toFixed(1),
+		cost: totals.cost.toFixed(3),
+		percent,
+		contextWindow: formatTokens(contextWindow),
+		tokenStats,
+		contextUsage: `${percent}%/${formatTokens(contextWindow)}${autoCompactionEnabled ? " (auto)" : ""}`,
+		modelInfo: formatModelInfo(ctx, footerData),
+		extensionStatuses: formatExtensionStatuses(footerData),
+		xp: process.env.PI_EXPERIMENTAL === "1" ? "• xp" : "",
+	};
+}
+
+export function formatRunNotification(stats: RunStats): string {
+	return `TPS ${stats.tokensPerSecond.toFixed(1)} tok/s. out ${stats.output.toLocaleString()}, in ${stats.input.toLocaleString()}, cache r/w ${stats.cacheRead.toLocaleString()}/${stats.cacheWrite.toLocaleString()}, total ${stats.totalTokens.toLocaleString()}, ${stats.elapsedTime} elapsed after ${stats.idleTime}'s idle`;
+}
+
+function expandTemplate(template: string, fields: Record<string, string>): string {
+	return template.replace(FIELD_PATTERN, (placeholder, fieldName: string) => {
+		return Object.prototype.hasOwnProperty.call(fields, fieldName) ? fields[fieldName] || "" : placeholder;
+	});
+}
+
+export function renderTemplate(
+	template: string,
+	fields: Record<string, string>,
+	width: number,
+	theme: Theme,
+): string[] {
+	const lines = expandTemplate(template, fields).split(/\r?\n/);
+	// Do not leave a blank trailing row when the template uses an optional
+	// extension-status placeholder.
+	while (lines.length > 1 && lines[lines.length - 1] === "") lines.pop();
+
+	return lines.map((line) => {
+		const styledLine = theme.fg("dim", line);
+		return truncateToWidth(styledLine, width, theme.fg("dim", "..."));
+	});
+}

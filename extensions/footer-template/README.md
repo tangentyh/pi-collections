@@ -3,7 +3,62 @@
 Render pi's footer from a configurable string template and report response
 throughput after each agent run.
 
-> **Scaffold:** footer rendering and configuration resolution are not implemented yet.
+## Configuration
+
+The extension reads `footerTemplate` from project settings (when the project is
+trusted) or global settings. Project settings take precedence:
+
+```json
+{
+  "footerTemplate": {
+    "template": "{cwd}\n{tokenStats} {contextUsage}          {modelInfo}\n{extensionStatuses}"
+  }
+}
+```
+
+A string value is also accepted for convenience:
+
+```json
+{
+  "footerTemplate": "{cwd} — {modelInfo}"
+}
+```
+
+Settings are read from `.pi/settings.json` and
+`~/.pi/agent/settings.json`. If no template is configured — or it is empty or
+whitespace-only — the extension does not install a custom footer, so pi's
+built-in footer remains active. A configured template replaces it. Reload pi
+after changing the setting.
+
+Unknown placeholders are left unchanged. Each rendered line is truncated to
+the terminal width, like pi's built-in footer.
+
+## Built-in fields
+
+These fields mirror the values shown by pi's built-in footer:
+
+| Field | Value |
+| --- | --- |
+| `{cwd}` | Current working directory, with the home directory abbreviated as `~` |
+| `{gitBranch}` | Current git branch, or empty when unavailable |
+| `{sessionName}` | Session name, or empty when unnamed |
+| `{latestCacheHitRate}` | Latest assistant cache-hit percentage, without the `%` sign |
+| `{cost}` | Cumulative cost, formatted to three decimal places |
+| `{percent}` | Current context usage percentage, formatted to one decimal place, or `?` |
+| `{contextWindow}` | Context-window size in pi's compact token format |
+| `{tokenStats}` | Cumulative input/output/cache/cost statistics |
+| `{contextUsage}` | `{percent}%/{contextWindow}`, with `(auto)` when auto-compaction is enabled |
+| `{modelInfo}` | Model name, thinking level, and provider when multiple providers are available |
+| `{extensionStatuses}` | Persistent extension statuses, sorted and joined on one line |
+| `{xp}` | `• xp` when `PI_EXPERIMENTAL=1`, otherwise empty |
+
+`{tokenStats}` includes usage from assistant messages, tool results, and
+compaction/branch-summary generation, matching pi's built-in totals. Its token
+counts use pi's compact format (`1.2k`, `3M`, and so on). One caveat: the
+`(sub)` marker after the cost figure is shown only when the active provider is
+`kimi-coding`. Pi's built-in footer additionally flags Anthropic and OpenAI
+subscription plans, but its `modelRuntime.isUsingSubscription()` check is not
+exposed to extensions, so those plans render without the marker here.
 
 ## Response throughput
 
@@ -14,16 +69,18 @@ this format:
 TPS {tokensPerSecond} tok/s. out {output}, in {input}, cache r/w {cacheRead}/{cacheWrite}, total {totalTokens}, {elapsedTime} elapsed after {idleTime}'s idle
 ```
 
-Usage fields are calculated from the run's assistant messages; timing fields are
-measured by the extension:
+The following fields are also available in templates and describe the most
+recent completed run:
 
-- `tokensPerSecond` — output tokens divided by elapsed time, formatted to one decimal place
-- `output` — output-token count
-- `input` — input-token count
-- `cacheRead` / `cacheWrite` — cache-read and cache-write token counts
-- `totalTokens` — total-token count
-- `elapsedTime` — elapsed time, shown as seconds, minutes and seconds, or hours, minutes and seconds
-- `idleTime` — time since the previous agent run ended, or since `session_start` for the first message, formatted like `elapsedTime`
+- `{tokensPerSecond}` — output tokens divided by elapsed time, formatted to one decimal place
+- `{output}` — output-token count
+- `{input}` — input-token count
+- `{cacheRead}` / `{cacheWrite}` — cache-read and cache-write token counts
+- `{totalTokens}` — total-token count
+- `{elapsedTime}` — elapsed time, shown as seconds, minutes and seconds, or hours, minutes and seconds
+- `{idleTime}` — time since the previous agent run ended, or since `session_start` for the first message, formatted like `{elapsedTime}`
+
+Before the first completed run, these throughput fields contain zero values.
 
 ## Install
 
@@ -33,19 +90,17 @@ pi install ./extensions/footer-template
 pi install npm:pi-footer-template
 ```
 
-## Pi footer reference
+## Built-in footer without this extension
 
-Pi canonically calls the UI area at the bottom the **Footer** (or the
-built-in/default footer). Its implementation class is `FooterComponent`, in:
+Pi's native footer remains active when this extension is not loaded. It also
+remains active when no `footerTemplate` is configured. Its implementation class
+is `FooterComponent`, in:
 
 ```text
 dist/modes/interactive/components/footer.js
 ```
 
-### Rendered shape
-
-The footer renders two lines by default, plus an optional extension-status
-line:
+The built-in footer renders two lines, plus an optional extension-status line:
 
 ```text
 {cwd}[ ({gitBranch})][ • {sessionName}]
@@ -53,11 +108,15 @@ line:
 {extensionStatus1} {extensionStatus2} ...
 ```
 
-The third line is shown only when extension statuses exist. Model information
-is right-aligned and may include the provider when multiple providers are
-available.
+The third line appears only when extension statuses exist. The model
+information is right-aligned and may include the provider when multiple
+providers are available. The built-in footer also handles width-aware
+truncation and context-usage coloring; a custom template controls its own
+spacing and styling.
 
 ### Token and context stats
+
+The built-in stats line contains these optional parts:
 
 ```text
 [↑{input}]
@@ -109,26 +168,10 @@ Pi collects these as extension statuses, sorts them by key, sanitizes them to
 one line, and joins them with spaces. Extension health is not inferred
 automatically.
 
-## Planned configuration
+## Notes
 
-The extension will read a `footerTemplate` setting from global or trusted
-project settings:
-
-```json
-{
-  "footerTemplate": {
-    "template": "{cwd}\n{tokenStats} {contextUsage}          {modelInfo}"
-  }
-}
-```
-
-Planned placeholders include:
-
-- `{cwd}`, `{gitBranch}`, and `{sessionName}`
-- `{tokensPerSecond}`, `{input}`, `{output}`, `{cacheRead}`, `{cacheWrite}`, `{totalTokens}`, `{elapsedTime}`, `{idleTime}`, and `{latestCacheHitRate}`
-- `{cost}`, `{percent}`, and `{contextWindow}`
-- `{tokenStats}`, `{contextUsage}`, and `{modelInfo}`
-- `{extensionStatuses}` and `{xp}`
-
-Keep these fields and placeholders synchronized with the implementation: when a
-field is added or removed, reflect the change in this README.
+- Custom footer rendering is active in pi's TUI mode only.
+- Footer values are recalculated on render, so model, session, git, context,
+  and extension-status changes are reflected without restarting pi.
+- The extension keeps the throughput notification even when no custom template
+  is configured.
