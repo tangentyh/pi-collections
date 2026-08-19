@@ -108,6 +108,7 @@ export function formatTime(date: Date): string {
 export function getRunStatsFields(stats: RunStats): Record<string, string> {
 	return {
 		tokensPerSecond: stats.tokensPerSecond.toFixed(1),
+		cost: stats.cost.toFixed(3),
 		input: formatCount(stats.input),
 		output: formatCount(stats.output),
 		cacheRead: formatCount(stats.cacheRead),
