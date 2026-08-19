@@ -32,27 +32,53 @@ function readSettingsFile(file: string): SettingsObject | undefined {
 	}
 }
 
+/**
+ * Merge settings the way pi does: project values override global values,
+ * nested objects merge recursively, and any other value (including an empty
+ * string) replaces the global value wholesale. A project-level `footerTemplate`
+ * therefore shadows the global one entirely instead of falling back into it
+ * piecewise; only when both sides are objects do their keys merge.
+ */
+function mergeSettings(
+	globalSettings: SettingsObject | undefined,
+	projectSettings: SettingsObject | undefined,
+): SettingsObject {
+	const base = globalSettings ?? {};
+	const overrides = projectSettings ?? {};
+	const result: SettingsObject = { ...base };
+	for (const key of Object.keys(overrides)) {
+		const overrideValue = overrides[key];
+		if (overrideValue === undefined) continue;
+		const baseValue = base[key];
+		result[key] =
+			isRecord(baseValue) && isRecord(overrideValue)
+				? mergeSettings(baseValue, overrideValue)
+				: overrideValue;
+	}
+	return result;
+}
+
 function nonEmpty(value: string | undefined): string | undefined {
 	return value !== undefined && value.trim() !== "" ? value : undefined;
 }
 
 /** An empty or whitespace-only template is treated as unset, leaving pi's built-in footer in place. */
-function getFooterTemplate(settings: SettingsObject | undefined): string | undefined {
-	const value = settings?.footerTemplate;
+function getFooterTemplate(settings: SettingsObject): string | undefined {
+	const value = settings.footerTemplate;
 	if (typeof value === "string") return nonEmpty(value);
 	if (isRecord(value) && typeof value.template === "string") return nonEmpty(value.template);
 	return undefined;
 }
 
 /** The per-message notification template, only available in object form. */
-function getNotificationTemplate(settings: SettingsObject | undefined): string | undefined {
-	const value = settings?.footerTemplate;
+function getNotificationTemplate(settings: SettingsObject): string | undefined {
+	const value = settings.footerTemplate;
 	if (!isRecord(value) || typeof value.notificationTemplate !== "string") return undefined;
 	return nonEmpty(value.notificationTemplate);
 }
 
-function getCompactionEnabled(settings: SettingsObject | undefined): boolean | undefined {
-	const compaction = settings?.compaction;
+function getCompactionEnabled(settings: SettingsObject): boolean | undefined {
+	const compaction = settings.compaction;
 	if (!isRecord(compaction) || typeof compaction.enabled !== "boolean") return undefined;
 	return compaction.enabled;
 }
@@ -62,12 +88,11 @@ export function resolveFooterConfiguration(ctx: ExtensionContext): FooterConfigu
 	const projectSettings = ctx.isProjectTrusted()
 		? readSettingsFile(join(ctx.cwd, CONFIG_DIR_NAME, "settings.json"))
 		: undefined;
+	const settings = mergeSettings(globalSettings, projectSettings);
 
 	return {
-		template: getFooterTemplate(projectSettings) ?? getFooterTemplate(globalSettings),
-		notificationTemplate:
-			getNotificationTemplate(projectSettings) ?? getNotificationTemplate(globalSettings),
-		autoCompactionEnabled:
-			getCompactionEnabled(projectSettings) ?? getCompactionEnabled(globalSettings) ?? true,
+		template: getFooterTemplate(settings),
+		notificationTemplate: getNotificationTemplate(settings),
+		autoCompactionEnabled: getCompactionEnabled(settings) ?? true,
 	};
 }

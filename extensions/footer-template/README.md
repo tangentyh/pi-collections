@@ -41,23 +41,27 @@ A string value is also accepted for convenience:
 
 In string form only the footer is configured; the notification template needs
 the object form. Settings are read from `.pi/settings.json` and
-`~/.pi/agent/settings.json`. If no template is configured — or it is empty or
-whitespace-only — the extension does not install a custom footer, so pi's
-built-in footer remains active. A configured template replaces it. Reload pi
-after changing the setting.
+`~/.pi/agent/settings.json` and merged like pi's own settings: a project-level
+`footerTemplate` shadows the global one entirely (an empty string in the
+project disables the template even when global settings define one), and when
+both sides are objects their keys merge, so a project that only sets
+`notificationTemplate` keeps a global `template`. If no template is configured
+— or it is empty or whitespace-only — the extension does not install a custom
+footer, so pi's built-in footer remains active. A configured template replaces
+it. Reload pi after changing the setting.
 
 Unknown placeholders are left unchanged. Each rendered line is truncated to
 the terminal width, like pi's built-in footer.
 
 ## Built-in fields
 
-These fields mirror the values shown by pi's built-in footer:
+These fields provide the values shown by pi's built-in footer:
 
 | Field | Value |
 | --- | --- |
 | `{cwd}` | Current working directory, with the home directory abbreviated as `~` |
-| `{gitBranch}` | Current git branch, or empty when unavailable |
-| `{sessionName}` | Session name, or empty when unnamed |
+| `{gitBranch}` | ` (branch)` — git branch in parentheses, leading space included; empty when unavailable |
+| `{sessionName}` | ` • name` — session name with a leading bullet; empty when unnamed |
 | `{latestCacheHitRate}` | Latest assistant cache-hit percentage, without the `%` sign |
 | `{cost}` | Cumulative cost, formatted to three decimal places |
 | `{percent}` | Current context usage percentage, formatted to one decimal place, or `?` |
