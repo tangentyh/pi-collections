@@ -7,6 +7,18 @@ function isAssistantMessage(message: unknown): message is AssistantMessage {
 	return role === "assistant";
 }
 
+function formatElapsedTime(elapsedSeconds: number): string {
+	if (elapsedSeconds < 60) return `${elapsedSeconds.toFixed(1)}s`;
+
+	const totalSeconds = Math.floor(elapsedSeconds);
+	const minutes = Math.floor(totalSeconds / 60);
+	const seconds = totalSeconds % 60;
+	if (minutes < 60) return `${minutes} min ${seconds} s`;
+
+	const hours = Math.floor(minutes / 60);
+	return `${hours} h ${minutes % 60} min ${seconds} s`;
+}
+
 /**
  * Scaffold for a configurable string-template footer.
  *
@@ -47,7 +59,8 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 
 		const elapsedSeconds = elapsedMs / 1000;
 		const tokensPerSecond = output / elapsedSeconds;
-		const message = `TPS ${tokensPerSecond.toFixed(1)} tok/s. out ${output.toLocaleString()}, in ${input.toLocaleString()}, cache r/w ${cacheRead.toLocaleString()}/${cacheWrite.toLocaleString()}, total ${totalTokens.toLocaleString()}, ${elapsedSeconds.toFixed(1)}s`;
+		const elapsedTime = formatElapsedTime(elapsedSeconds);
+		const message = `TPS ${tokensPerSecond.toFixed(1)} tok/s. out ${output.toLocaleString()}, in ${input.toLocaleString()}, cache r/w ${cacheRead.toLocaleString()}/${cacheWrite.toLocaleString()}, total ${totalTokens.toLocaleString()}, ${elapsedTime}`;
 		ctx.ui.notify(message, "info");
 	});
 
