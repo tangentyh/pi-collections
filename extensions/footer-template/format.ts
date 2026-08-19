@@ -126,6 +126,7 @@ export function getFieldValues(
 	sessionUsage: SessionUsage,
 	runStats: RunStats,
 	autoCompactionEnabled: boolean,
+	deepseekBalance: string,
 ): Record<string, string> {
 	const { totals, latestCacheHitRate } = sessionUsage;
 	const model = ctx.model;
@@ -162,6 +163,7 @@ export function getFieldValues(
 		contextTokens,
 		modelInfo: formatModelInfo(ctx, footerData),
 		extensionStatuses: formatExtensionStatuses(footerData),
+		deepseekBalance,
 		xp: process.env.PI_EXPERIMENTAL === "1" ? " • xp" : "",
 	};
 }

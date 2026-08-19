@@ -1,6 +1,13 @@
 import type { AssistantMessage, Usage } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
+	DEEPSEEK_BALANCE_CACHE_MS,
+	DeepSeekBalanceError,
+	fetchDeepSeekBalance,
+	formatDeepSeekBalance,
+	isDeepSeekProvider,
+} from "./deepseek.js";
+import {
 	DEFAULT_FOOTER_TEMPLATE,
 	formatElapsedTime,
 	formatTime,
@@ -112,6 +119,42 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 	let requestFooterRender: (() => void) | undefined;
 	let customFooterInstalled = false;
 
+	// DeepSeek account balance behind the {deepseekBalance} field. Refreshed
+	// at most once per cache window (mirroring pi-deepseek-usage's 30s cache),
+	// on session start, model selection, and after each turn; fetch errors are
+	// not cached and render as `DeepSeek: <err:code>` until the next refresh.
+	let deepseekBalance = "";
+	let deepseekBalanceFreshUntil = 0;
+	let deepseekBalanceFetching: Promise<void> | undefined;
+
+	const refreshDeepseekBalance = (ctx: ExtensionContext): void => {
+		if (!isDeepSeekProvider(ctx.model?.provider)) {
+			if (deepseekBalance) {
+				deepseekBalance = "";
+				requestFooterRender?.();
+			}
+			return;
+		}
+		const now = Date.now();
+		if (now < deepseekBalanceFreshUntil || deepseekBalanceFetching) return;
+		deepseekBalanceFetching = (async () => {
+			try {
+				const data = await fetchDeepSeekBalance(ctx.modelRegistry);
+				// The provider may have changed while the request was in flight.
+				if (!isDeepSeekProvider(ctx.model?.provider)) return;
+				deepseekBalance = formatDeepSeekBalance(data);
+				deepseekBalanceFreshUntil = Date.now() + DEEPSEEK_BALANCE_CACHE_MS;
+			} catch (error) {
+				if (!isDeepSeekProvider(ctx.model?.provider)) return;
+				const code = error instanceof DeepSeekBalanceError ? error.code : "fetch";
+				deepseekBalance = `DeepSeek: <err:${code}>`;
+			} finally {
+				deepseekBalanceFetching = undefined;
+				requestFooterRender?.();
+			}
+		})();
+	};
+
 	// Session entries are append-only, and every usage-bearing append is
 	// accompanied by a message_end, session_compact, or session_tree event. So
 	// the cumulative totals can be cached and invalidated on those events,
@@ -159,8 +202,16 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 	const requestRender = () => requestFooterRender?.();
 	pi.on("message_update", requestRender);
 	pi.on("session_info_changed", requestRender);
-	pi.on("model_select", requestRender);
+	pi.on("model_select", (_event, ctx) => {
+		requestRender();
+		refreshDeepseekBalance(ctx);
+	});
 	pi.on("thinking_level_select", requestRender);
+
+	// Like pi-deepseek-usage, refresh the account balance after each turn.
+	pi.on("turn_end", (_event, ctx) => {
+		refreshDeepseekBalance(ctx);
+	});
 
 	const invalidateUsageCache = () => {
 		sessionUsageCache = undefined;
@@ -185,6 +236,9 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 		runStats = emptyRunStats();
 		requestFooterRender = undefined;
 		sessionUsageCache = undefined;
+		deepseekBalance = "";
+		deepseekBalanceFreshUntil = 0;
+		deepseekBalanceFetching = undefined;
 		if (ctx.mode !== "tui") return;
 
 		const configuration = resolveFooterConfiguration(ctx);
@@ -213,6 +267,7 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 						getSessionUsage(ctx),
 						runStats,
 						configuration.autoCompactionEnabled,
+						deepseekBalance,
 					);
 					return renderTemplate(footerTemplate, fields, width, theme);
 				},
@@ -223,6 +278,7 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 			};
 		});
 		customFooterInstalled = true;
+		refreshDeepseekBalance(ctx);
 	});
 
 	pi.on("session_shutdown", (_event, ctx) => {
@@ -234,5 +290,8 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 		lastAgentEndMs = null;
 		requestFooterRender = undefined;
 		sessionUsageCache = undefined;
+		deepseekBalance = "";
+		deepseekBalanceFreshUntil = 0;
+		deepseekBalanceFetching = undefined;
 	});
 }

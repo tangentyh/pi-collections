@@ -81,6 +81,7 @@ These fields provide the values shown by pi's built-in footer:
 | `{contextTokens}` | ` (24,680)` — absolute number of context tokens currently used, with a leading space and parentheses; empty when the usage percentage is unknown or no model context is available |
 | `{modelInfo}` | Model name, thinking level, and provider when multiple providers are available |
 | `{extensionStatuses}` | Persistent extension statuses, sorted and joined on one line |
+| `{deepseekBalance}` | DeepSeek API account balance, e.g. `DeepSeek: $17.35`; only rendered when the active model's provider is DeepSeek, empty otherwise (see below) |
 | `{xp}` | ` • xp` when `PI_EXPERIMENTAL=1`, otherwise empty |
 
 Appending `:right` to any field name right-aligns that field's value on its
@@ -128,6 +129,28 @@ recent completed run:
 
 Before the first completed run, these run-stats fields contain zero values
 and `{time}` is empty.
+
+## DeepSeek account balance
+
+`{deepseekBalance}` shows the remaining DeepSeek API account balance, like
+the [pi-deepseek-usage](https://github.com/shaftoe/pi-deepseek-usage)
+extension: `DeepSeek: $17.35`. USD is preferred, otherwise the first
+reported currency is used (`¥` for CNY, otherwise the currency code). The
+value is fetched from the DeepSeek balance endpoint
+(`GET https://api.deepseek.com/user/balance`) using the DeepSeek API key
+from pi's model registry, and cached for 30 seconds to avoid excessive API
+calls.
+
+The field is empty when the active model's provider is not a DeepSeek
+provider, and when the account reports no balances it renders as
+`DeepSeek: No balance`. Fetch failures render as `DeepSeek: <err:code>`
+(`http401` for a missing or invalid API key, `fetch` for network errors,
+`badjson` for malformed responses) and are retried on the next refresh.
+The balance refreshes on session start, on model selection, and after each
+turn, and is recalculated without restarting pi. Like pi-deepseek-usage,
+requests are sent with `Accept-Encoding: identity` to avoid pi's undici
+gzip-decompression issue, and the `proxy-managed` key sentinel is
+respected in sandboxed environments.
 
 ## Install
 

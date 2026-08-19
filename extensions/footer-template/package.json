@@ -33,6 +33,7 @@
     "format.ts",
     "io.ts",
     "types.ts",
+    "deepseek.ts",
     "README.md",
     "LICENSE"
   ]
