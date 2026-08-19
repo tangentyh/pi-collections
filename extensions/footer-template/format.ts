@@ -4,10 +4,11 @@ import type {
 	ReadonlyFooterDataProvider,
 	Theme,
 } from "@earendil-works/pi-coding-agent";
-import { truncateToWidth } from "@earendil-works/pi-tui";
+import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import type { RunStats, SessionUsage, UsageTotals } from "./types.js";
 
-const FIELD_PATTERN = /\{([A-Za-z][A-Za-z0-9_]*)\}/g;
+const FIELD_PATTERN = /\{([A-Za-z][A-Za-z0-9_]*)(?::right)?\}/g;
+const RIGHT_ALIGN_PATTERN = /\{([A-Za-z][A-Za-z0-9_]*):right\}/;
 
 export function formatElapsedTime(elapsedSeconds: number): string {
 	const secondsValue = Number.isFinite(elapsedSeconds) ? Math.max(0, elapsedSeconds) : 0;
@@ -131,14 +132,16 @@ export function getFieldValues(
 	const contextWindow = contextUsage?.contextWindow ?? model?.contextWindow ?? 0;
 	const percent = contextUsage?.percent === null ? "?" : (contextUsage?.percent ?? 0).toFixed(1);
 	const usingSubscription = model?.provider === "kimi-coding";
+	const branch = footerData.getGitBranch();
+	const sessionName = ctx.sessionManager.getSessionName();
 
 	const tokenStats = formatTokenStats(totals, latestCacheHitRate, usingSubscription);
 
 	return {
 		...getRunStatsFields(runStats),
 		cwd: formatCwdForFooter(ctx.sessionManager.getCwd(), process.env.HOME || process.env.USERPROFILE),
-		gitBranch: footerData.getGitBranch() || "",
-		sessionName: ctx.sessionManager.getSessionName() || "",
+		gitBranch: branch ? ` (${branch})` : "",
+		sessionName: sessionName ? ` • ${sessionName}` : "",
 		latestCacheHitRate: latestCacheHitRate === undefined ? "" : latestCacheHitRate.toFixed(1),
 		cost: totals.cost.toFixed(3),
 		percent,
@@ -147,9 +150,15 @@ export function getFieldValues(
 		contextUsage: `${percent}%/${formatTokens(contextWindow)}${autoCompactionEnabled ? " (auto)" : ""}`,
 		modelInfo: formatModelInfo(ctx, footerData),
 		extensionStatuses: formatExtensionStatuses(footerData),
-		xp: process.env.PI_EXPERIMENTAL === "1" ? "• xp" : "",
+		xp: process.env.PI_EXPERIMENTAL === "1" ? " • xp" : "",
 	};
 }
+
+/** The default footer template, mirroring pi's built-in footer layout. */
+export const DEFAULT_FOOTER_TEMPLATE =
+	"{cwd}{gitBranch}{sessionName}\n" +
+	"{tokenStats} {contextUsage}{xp}{modelInfo:right}\n" +
+	"{extensionStatuses}";
 
 /** The notification format used when no custom template is configured. */
 export const DEFAULT_RUN_NOTIFICATION_TEMPLATE =
@@ -166,19 +175,64 @@ function expandTemplate(template: string, fields: Record<string, string>): strin
 	});
 }
 
+/**
+ * Expand one template line. A `{field:right}` placeholder splits the line into
+ * a left part and a right part, so the field can be right-aligned on render.
+ */
+function expandLine(
+	line: string,
+	fields: Record<string, string>,
+): { text: string; right: { left: string; right: string } | undefined } {
+	const rightMatch = RIGHT_ALIGN_PATTERN.exec(line);
+	if (!rightMatch || !Object.prototype.hasOwnProperty.call(fields, rightMatch[1])) {
+		return { text: expandTemplate(line, fields), right: undefined };
+	}
+	const left = expandTemplate(line.slice(0, rightMatch.index), fields);
+	const right =
+		fields[rightMatch[1]] + expandTemplate(line.slice(rightMatch.index + rightMatch[0].length), fields);
+	return { text: left + right, right: { left, right } };
+}
+
+/**
+ * Right-align `right` after `left` with at least two spaces of separation,
+ * mirroring pi's built-in stats line: truncate the left part first, then the
+ * right part, and drop the right part entirely when no room is left.
+ */
+function rightAlign(left: string, right: string, width: number): string {
+	const minPadding = 2;
+	let leftWidth = visibleWidth(left);
+	if (leftWidth > width) {
+		left = truncateToWidth(left, width, "...");
+		leftWidth = visibleWidth(left);
+	}
+	const rightWidth = visibleWidth(right);
+	if (leftWidth + minPadding + rightWidth <= width) {
+		return left + " ".repeat(width - leftWidth - rightWidth) + right;
+	}
+	const availableForRight = width - leftWidth - minPadding;
+	if (availableForRight <= 0) return left;
+	const truncatedRight = truncateToWidth(right, availableForRight, "");
+	const truncatedRightWidth = visibleWidth(truncatedRight);
+	const padding = Math.max(0, width - leftWidth - truncatedRightWidth);
+	return left + " ".repeat(padding) + truncatedRight;
+}
+
 export function renderTemplate(
 	template: string,
 	fields: Record<string, string>,
 	width: number,
 	theme: Theme,
 ): string[] {
-	const lines = expandTemplate(template, fields).split(/\r?\n/);
+	const lines = template.split(/\r?\n/).map((line) => expandLine(line, fields));
 	// Do not leave a blank trailing row when the template uses an optional
 	// extension-status placeholder.
-	while (lines.length > 1 && lines[lines.length - 1] === "") lines.pop();
+	while (lines.length > 1 && lines[lines.length - 1].text === "") lines.pop();
 
-	return lines.map((line) => {
-		const styledLine = theme.fg("dim", line);
+	return lines.map(({ text, right }) => {
+		if (right) {
+			return theme.fg("dim", rightAlign(right.left, right.right, width));
+		}
+		const styledLine = theme.fg("dim", text);
 		return truncateToWidth(styledLine, width, theme.fg("dim", "..."));
 	});
 }

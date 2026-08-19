@@ -11,11 +11,25 @@ trusted) or global settings. Project settings take precedence:
 ```json
 {
   "footerTemplate": {
-    "template": "{cwd}\n{tokenStats} {contextUsage}          {modelInfo}\n{extensionStatuses}",
+    "template": "{cwd}{gitBranch}{sessionName}\n{tokenStats} {contextUsage}{xp}{modelInfo:right}\n{extensionStatuses}",
     "notificationTemplate": "{time} ({elapsedTime} elapsed/{idleTime} idle) — {tokensPerSecond} tok/s, ${cost}, {output} out, {input} in, cache r/w {cacheRead}/{cacheWrite}, {totalTokens} total"
   }
 }
 ```
+
+The default template mirrors the layout of pi's built-in footer:
+
+```text
+{cwd}{gitBranch}{sessionName}
+{tokenStats} {contextUsage}{xp}{modelInfo:right}
+{extensionStatuses}
+```
+
+`{gitBranch}`, `{sessionName}`, and `{xp}` carry their leading separators (see
+the field table below), and the `:right` modifier pushes a field to the right
+edge of its line — this is how the model information lands on the right side,
+just like the built-in footer. The third line renders only when extension
+statuses exist.
 
 A string value is also accepted for convenience:
 
@@ -52,7 +66,13 @@ These fields mirror the values shown by pi's built-in footer:
 | `{contextUsage}` | `{percent}%/{contextWindow}`, with `(auto)` when auto-compaction is enabled |
 | `{modelInfo}` | Model name, thinking level, and provider when multiple providers are available |
 | `{extensionStatuses}` | Persistent extension statuses, sorted and joined on one line |
-| `{xp}` | `• xp` when `PI_EXPERIMENTAL=1`, otherwise empty |
+| `{xp}` | ` • xp` when `PI_EXPERIMENTAL=1`, otherwise empty |
+
+Appending `:right` to any field name right-aligns that field's value on its
+line, e.g. `{modelInfo:right}`. The line is split at that placeholder: the
+text before it stays left-aligned, the field value is pushed to the right edge
+with at least two spaces of separation, and overlong lines are truncated like
+the built-in stats line (left part first, then the right part).
 
 `{tokenStats}` includes usage from assistant messages, tool results, and
 compaction/branch-summary generation, matching pi's built-in totals. Its token
@@ -121,9 +141,9 @@ The built-in footer renders two lines, plus an optional extension-status line:
 
 The third line appears only when extension statuses exist. The model
 information is right-aligned and may include the provider when multiple
-providers are available. The built-in footer also handles width-aware
-truncation and context-usage coloring; a custom template controls its own
-spacing and styling.
+providers are available. The default template above renders this same layout.
+The built-in footer also handles width-aware truncation and context-usage
+coloring; a custom template controls its own spacing and styling.
 
 ### Token and context stats
 
