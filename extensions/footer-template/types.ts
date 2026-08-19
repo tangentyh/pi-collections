@@ -14,6 +14,7 @@ export interface RunStats {
 	cacheRead: number;
 	cacheWrite: number;
 	totalTokens: number;
+	cost: number;
 	elapsedTime: string;
 	idleTime: string;
 	time: string;

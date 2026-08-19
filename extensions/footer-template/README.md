@@ -69,7 +69,7 @@ Its text is configurable via `notificationTemplate` in the `footerTemplate`
 settings object; without it, this default format is used:
 
 ```text
-TPS {tokensPerSecond} tok/s. out {output}, in {input}, cache r/w {cacheRead}/{cacheWrite}, total {totalTokens}, {elapsedTime} elapsed after {idleTime}'s idle at {time}
+TPS {tokensPerSecond} tok/s. out {output}, in {input}, cache r/w {cacheRead}/{cacheWrite}, total {totalTokens}, cost ${cost}, {elapsedTime} elapsed after {idleTime}'s idle at {time}
 ```
 
 Unlike the footer, the notification is rendered from the run-stats fields only
@@ -85,6 +85,7 @@ recent completed run:
 - `{input}` — input-token count
 - `{cacheRead}` / `{cacheWrite}` — cache-read and cache-write token counts
 - `{totalTokens}` — total-token count
+- `{cost}` — cost of the run, formatted to three decimal places
 - `{elapsedTime}` — elapsed time, shown as seconds, minutes and seconds, or hours, minutes and seconds
 - `{idleTime}` — time since the previous agent run ended, or since `session_start` for the first message, formatted like `{elapsedTime}`
 - `{time}` — wall-clock completion time of the run, in 24-hour `HH:MM:SS` (local time)
