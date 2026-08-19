@@ -7,9 +7,21 @@ throughput after each agent run.
 
 ## Response throughput
 
-After an agent run that produces output, the extension shows a notification with
-output tokens per second and the input, output, cache, total-token, and
-elapsed-time figures from the run.
+After an agent run that produces output, the extension shows a notification in
+this format:
+
+```text
+TPS {tokensPerSecond} tok/s. out {output}, in {input}, cache r/w {cacheRead}/{cacheWrite}, total {totalTokens}, {elapsedTime}
+```
+
+The fields are calculated from the run's assistant messages:
+
+- `tokensPerSecond` — output tokens divided by elapsed time, formatted to one decimal place
+- `output` — output-token count
+- `input` — input-token count
+- `cacheRead` / `cacheWrite` — cache-read and cache-write token counts
+- `totalTokens` — total-token count
+- `elapsedTime` — elapsed time, shown as seconds, minutes and seconds, or hours, minutes and seconds
 
 ## Install
 
@@ -111,7 +123,7 @@ project settings:
 Planned placeholders include:
 
 - `{cwd}`, `{gitBranch}`, and `{sessionName}`
-- `{input}`, `{output}`, `{cacheRead}`, `{cacheWrite}`, `{latestCacheHitRate}`
+- `{tokensPerSecond}`, `{input}`, `{output}`, `{cacheRead}`, `{cacheWrite}`, `{totalTokens}`, `{elapsedTime}`, and `{latestCacheHitRate}`
 - `{cost}`, `{percent}`, and `{contextWindow}`
 - `{tokenStats}`, `{contextUsage}`, and `{modelInfo}`
 - `{extensionStatuses}` and `{xp}`
