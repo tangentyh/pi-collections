@@ -1,7 +1,8 @@
 # pi-footer-template
 
-Render pi's footer from a configurable string template and report response
-throughput after each agent run.
+Render pi's footer from a configurable string template, and report time and
+response throughput in a notification after each agent run, configured the
+same way.
 
 ## Configuration
 
@@ -96,7 +97,7 @@ counts use pi's compact format (`1.2k`, `3M`, and so on). One caveat: the
 subscription plans, but its `modelRuntime.isUsingSubscription()` check is not
 exposed to extensions, so those plans render without the marker here.
 
-## Response throughput
+## Per-run stats notification
 
 After an agent run that produces output, the extension shows a notification.
 Its text is configurable via `notificationTemplate` in the `footerTemplate`
@@ -125,7 +126,7 @@ recent completed run:
 - `{idleTime}` — time since the previous agent run ended, or since `session_start` for the first message, formatted like `{elapsedTime}`
 - `{time}` — wall-clock completion time of the run, in 24-hour `HH:MM:SS` (local time)
 
-Before the first completed run, these throughput fields contain zero values
+Before the first completed run, these run-stats fields contain zero values
 and `{time}` is empty.
 
 ## Install
@@ -220,6 +221,6 @@ automatically.
 - Custom footer rendering is active in pi's TUI mode only.
 - Footer values are recalculated on render, so model, session, git, context,
   and extension-status changes are reflected without restarting pi.
-- The throughput notification fires after every output-producing run,
+- The per-run stats notification fires after every output-producing run,
   independently of the footer template; an explicitly empty
   `notificationTemplate` disables it.
