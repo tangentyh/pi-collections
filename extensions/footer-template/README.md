@@ -88,7 +88,6 @@ These fields provide the values shown by pi's built-in footer:
 | `{modelInfo}` | Model name, thinking level, and provider when multiple providers are available |
 | `{extensionStatuses}` | Persistent extension statuses, sorted and joined on one line |
 | `{balance}` | Account balance of the active provider, e.g. `DeepSeek: $17.35`, converted to the configured display currency when possible; for the OAuth subscription providers (Codex, Claude) it shows the provider quota status instead, e.g. `Claude: 5h:23% 7d:41%`; empty when the active provider has neither a balance endpoint nor quota windows (see [Account balance and provider quota](#account-balance-and-provider-quota)) |
-| `{deepseekBalance}` | Deprecated alias of `{balance}` that renders only while the active provider is DeepSeek |
 | `{xp}` | ` • xp` when `PI_EXPERIMENTAL=1`, otherwise empty |
 
 Appending `:right` to any field name right-aligns that field's value on its
@@ -182,10 +181,6 @@ balance keeps its native currency. Like pi-deepseek-usage, requests are sent
 with `Accept-Encoding: identity` to avoid pi's undici gzip-decompression
 issue, and the `proxy-managed` key sentinel is respected in sandboxed
 environments.
-
-The `{deepseekBalance}` field from earlier versions is kept as an alias that
-renders the same value only while the active provider is DeepSeek; new
-templates should use `{balance}`.
 
 ### Provider quota status
 

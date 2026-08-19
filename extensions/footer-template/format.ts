@@ -232,10 +232,9 @@ export function getFieldValues(
 		options.fxRates,
 	);
 
-	// The `{balance}` field; the `{deepseekBalance}` alias renders it only
-	// while the active provider is DeepSeek. OAuth subscription providers
-	// (Codex, Claude) have no monetary balance; their quota status replaces
-	// the balance value for them.
+	// The `{balance}` field. OAuth subscription providers (Codex, Claude) have
+	// no monetary balance; their quota status replaces the balance value for
+	// them.
 	const balanceLabel = options.balanceProvider
 		? (BALANCE_PROVIDERS[options.balanceProvider]?.label ?? options.balanceProvider)
 		: "";
@@ -269,7 +268,6 @@ export function getFieldValues(
 		modelInfo: formatModelInfo(ctx, footerData),
 		extensionStatuses: formatExtensionStatuses(footerData),
 		balance: balanceField,
-		deepseekBalance: options.balanceProvider === "deepseek" ? balanceField : "",
 		xp: process.env.PI_EXPERIMENTAL === "1" ? " • xp" : "",
 	};
 }

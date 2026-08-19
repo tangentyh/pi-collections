@@ -130,8 +130,8 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 	let requestFooterRender: (() => void) | undefined;
 	let customFooterInstalled = false;
 
-	// Account balance behind the {balance} field (the {deepseekBalance} alias
-	// renders it for DeepSeek only). Supported providers mirror pi-tidy-footer:
+	// Account balance behind the {balance} field. Supported providers mirror
+	// pi-tidy-footer:
 	// deepseek, moonshotai-cn, openrouter, siliconflow, zhipu. Refreshed at most
 	// once per cache window (mirroring pi-deepseek-usage's 30s cache), on
 	// session start, model selection, and after each turn; fetch errors are
