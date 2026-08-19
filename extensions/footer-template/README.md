@@ -127,3 +127,6 @@ Planned placeholders include:
 - `{cost}`, `{percent}`, and `{contextWindow}`
 - `{tokenStats}`, `{contextUsage}`, and `{modelInfo}`
 - `{extensionStatuses}` and `{xp}`
+
+Keep these fields and placeholders synchronized with the implementation: when a
+field is added or removed, reflect the change in this README.

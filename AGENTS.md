@@ -49,6 +49,7 @@ running pi with `/reload`.
 
 ## Conventions
 
+- Before working on an extension, read that extension's `README.md` first.
 - Extension names are `pi-<name>` on npm; directories keep the plain name.
 - Entry files are semantic (`<name>.ts`), not `index.ts`.
 - Every extension ships its own `README.md` and `LICENSE` (MIT).
