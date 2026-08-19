@@ -12,7 +12,7 @@ trusted) or global settings. Project settings take precedence:
 {
   "footerTemplate": {
     "template": "{cwd}\n{tokenStats} {contextUsage}          {modelInfo}\n{extensionStatuses}",
-    "notificationTemplate": "{output} tok out, {tokensPerSecond} tok/s, {elapsedTime}"
+    "notificationTemplate": "{time} ({elapsedTime} elapsed/{idleTime} idle) — {tokensPerSecond} tok/s, ${cost}, {output} out, {input} in, cache r/w {cacheRead}/{cacheWrite}, {totalTokens} total"
   }
 }
 ```
@@ -69,7 +69,7 @@ Its text is configurable via `notificationTemplate` in the `footerTemplate`
 settings object; without it, this default format is used:
 
 ```text
-TPS {tokensPerSecond} tok/s. out {output}, in {input}, cache r/w {cacheRead}/{cacheWrite}, total {totalTokens}, cost ${cost}, {elapsedTime} elapsed after {idleTime}'s idle at {time}
+{time} ({elapsedTime} elapsed/{idleTime} idle) — {tokensPerSecond} tok/s, ${cost}, {output} out, {input} in, cache r/w {cacheRead}/{cacheWrite}, {totalTokens} total
 ```
 
 Unlike the footer, the notification is rendered from the run-stats fields only

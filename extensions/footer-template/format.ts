@@ -153,7 +153,7 @@ export function getFieldValues(
 
 /** The notification format used when no custom template is configured. */
 export const DEFAULT_RUN_NOTIFICATION_TEMPLATE =
-	"TPS {tokensPerSecond} tok/s. out {output}, in {input}, cache r/w {cacheRead}/{cacheWrite}, total {totalTokens}, cost ${cost}, {elapsedTime} elapsed after {idleTime}'s idle at {time}";
+	"{time} ({elapsedTime} elapsed/{idleTime} idle) — {tokensPerSecond} tok/s, ${cost}, {output} out, {input} in, cache r/w {cacheRead}/{cacheWrite}, {totalTokens} total";
 
 /** Render the per-message throughput notification; undefined or empty falls back to the default format. */
 export function renderRunNotification(template: string | undefined, stats: RunStats): string {
