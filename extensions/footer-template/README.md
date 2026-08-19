@@ -17,8 +17,9 @@ trusted) or global settings. Project settings take precedence:
 }
 ```
 
-The default template mirrors the layout of pi's built-in footer, with the
-absolute context-usage token count appended after `{contextUsage}`:
+The default template — used when no template is configured — mirrors the
+layout of pi's built-in footer, with the absolute context-usage token count
+appended after `{contextUsage}`:
 
 ```text
 {cwd}{gitBranch}{sessionName}
@@ -49,10 +50,11 @@ the object form. Settings are read from `.pi/settings.json` and
 `footerTemplate` shadows the global one entirely (an empty string in the
 project disables the template even when global settings define one), and when
 both sides are objects their keys merge, so a project that only sets
-`notificationTemplate` keeps a global `template`. If no template is configured
-— or it is empty or whitespace-only — the extension does not install a custom
-footer, so pi's built-in footer remains active. A configured template replaces
-it. Reload pi after changing the setting.
+`notificationTemplate` keeps a global `template`. When no template is
+configured, the extension applies its default template, which mirrors pi's
+built-in footer layout plus the absolute context-usage token count (shown
+above). An empty or whitespace-only template disables the custom footer, so
+pi's built-in footer remains active. Reload pi after changing the setting.
 
 Unknown placeholders are left unchanged. Each rendered line is truncated to
 the terminal width, like pi's built-in footer.
@@ -132,9 +134,9 @@ pi install npm:pi-footer-template
 
 ## Built-in footer without this extension
 
-Pi's native footer remains active when this extension is not loaded. It also
-remains active when no `footerTemplate` is configured. Its implementation class
-is `FooterComponent`, in:
+Pi's native footer remains active when this extension is not loaded, and when
+`footerTemplate` is explicitly set to an empty or whitespace-only value. Its
+implementation class is `FooterComponent`, in:
 
 ```text
 dist/modes/interactive/components/footer.js
@@ -214,5 +216,5 @@ automatically.
 - Custom footer rendering is active in pi's TUI mode only.
 - Footer values are recalculated on render, so model, session, git, context,
   and extension-status changes are reflected without restarting pi.
-- The extension keeps the throughput notification even when no custom template
-  is configured.
+- The throughput notification fires after every output-producing run,
+  independently of the footer template.

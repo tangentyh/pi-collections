@@ -1,6 +1,7 @@
 import type { AssistantMessage, Usage } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
+	DEFAULT_FOOTER_TEMPLATE,
 	formatElapsedTime,
 	formatTime,
 	getFieldValues,
@@ -184,14 +185,16 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 		if (ctx.mode !== "tui") return;
 
 		const configuration = resolveFooterConfiguration(ctx);
-		if (!configuration.template) {
+		// No configured template falls back to the built-in-shaped default; an
+		// explicit empty template opts out and keeps pi's built-in footer.
+		const footerTemplate = configuration.template ?? DEFAULT_FOOTER_TEMPLATE;
+		if (!footerTemplate) {
 			if (customFooterInstalled) {
 				ctx.ui.setFooter(undefined);
 				customFooterInstalled = false;
 			}
 			return;
 		}
-		const footerTemplate = configuration.template;
 
 		ctx.ui.setFooter((tui, theme, footerData) => {
 			const requestRender = () => tui.requestRender();

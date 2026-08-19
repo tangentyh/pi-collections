@@ -11,7 +11,10 @@ interface SettingsObject {
 }
 
 export interface FooterConfiguration {
-	/** Footer template, or undefined to leave pi's built-in footer in place. */
+	/**
+	 * Footer template: undefined when not configured (the extension then uses
+	 * its built-in-shaped default), or "" to leave pi's built-in footer in place.
+	 */
 	template: string | undefined;
 	/** Per-message throughput notification template, or undefined for the built-in format. */
 	notificationTemplate: string | undefined;
@@ -62,11 +65,18 @@ function nonEmpty(value: string | undefined): string | undefined {
 	return value !== undefined && value.trim() !== "" ? value : undefined;
 }
 
-/** An empty or whitespace-only template is treated as unset, leaving pi's built-in footer in place. */
+/**
+ * The configured footer template. Undefined when no template is configured,
+ * so the extension falls back to its built-in-shaped default. An empty or
+ * whitespace-only template is returned as "" and leaves pi's built-in footer
+ * in place.
+ */
 function getFooterTemplate(settings: SettingsObject): string | undefined {
 	const value = settings.footerTemplate;
-	if (typeof value === "string") return nonEmpty(value);
-	if (isRecord(value) && typeof value.template === "string") return nonEmpty(value.template);
+	if (typeof value === "string") return value.trim() === "" ? "" : value;
+	if (isRecord(value) && typeof value.template === "string") {
+		return value.template.trim() === "" ? "" : value.template;
+	}
 	return undefined;
 }
 
