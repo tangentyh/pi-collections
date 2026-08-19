@@ -11,7 +11,8 @@ trusted) or global settings. Project settings take precedence:
 ```json
 {
   "footerTemplate": {
-    "template": "{cwd}\n{tokenStats} {contextUsage}          {modelInfo}\n{extensionStatuses}"
+    "template": "{cwd}\n{tokenStats} {contextUsage}          {modelInfo}\n{extensionStatuses}",
+    "notificationTemplate": "{output} tok out, {tokensPerSecond} tok/s, {elapsedTime}"
   }
 }
 ```
@@ -24,7 +25,8 @@ A string value is also accepted for convenience:
 }
 ```
 
-Settings are read from `.pi/settings.json` and
+In string form only the footer is configured; the notification template needs
+the object form. Settings are read from `.pi/settings.json` and
 `~/.pi/agent/settings.json`. If no template is configured — or it is empty or
 whitespace-only — the extension does not install a custom footer, so pi's
 built-in footer remains active. A configured template replaces it. Reload pi
@@ -62,12 +64,18 @@ exposed to extensions, so those plans render without the marker here.
 
 ## Response throughput
 
-After an agent run that produces output, the extension shows a notification in
-this format:
+After an agent run that produces output, the extension shows a notification.
+Its text is configurable via `notificationTemplate` in the `footerTemplate`
+settings object; without it, this default format is used:
 
 ```text
-TPS {tokensPerSecond} tok/s. out {output}, in {input}, cache r/w {cacheRead}/{cacheWrite}, total {totalTokens}, {elapsedTime} elapsed after {idleTime}'s idle
+TPS {tokensPerSecond} tok/s. out {output}, in {input}, cache r/w {cacheRead}/{cacheWrite}, total {totalTokens}, {elapsedTime} elapsed after {idleTime}'s idle at {time}
 ```
+
+Unlike the footer, the notification is rendered from the run-stats fields only
+(it fires before the footer data provider is available). Unknown placeholders
+are left unchanged, and an empty or whitespace-only template falls back to the
+default format.
 
 The following fields are also available in templates and describe the most
 recent completed run:
@@ -79,8 +87,10 @@ recent completed run:
 - `{totalTokens}` — total-token count
 - `{elapsedTime}` — elapsed time, shown as seconds, minutes and seconds, or hours, minutes and seconds
 - `{idleTime}` — time since the previous agent run ended, or since `session_start` for the first message, formatted like `{elapsedTime}`
+- `{time}` — wall-clock completion time of the run, in 24-hour `HH:MM:SS` (local time)
 
-Before the first completed run, these throughput fields contain zero values.
+Before the first completed run, these throughput fields contain zero values
+and `{time}` is empty.
 
 ## Install
 

@@ -2,8 +2,9 @@ import type { AssistantMessage, Usage } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
 	formatElapsedTime,
-	formatRunNotification,
+	formatTime,
 	getFieldValues,
+	renderRunNotification,
 	renderTemplate,
 } from "./format.js";
 import { resolveFooterConfiguration } from "./io.js";
@@ -69,10 +70,16 @@ function emptyRunStats(): RunStats {
 		totalTokens: 0,
 		elapsedTime: "0.0s",
 		idleTime: "0.0s",
+		time: "",
 	};
 }
 
-function calculateRunStats(messages: readonly unknown[], elapsedMs: number, idleMs: number): RunStats | undefined {
+function calculateRunStats(
+	messages: readonly unknown[],
+	elapsedMs: number,
+	idleMs: number,
+	endedAt: Date,
+): RunStats | undefined {
 	const usage = createUsageTotals();
 	for (const message of messages) {
 		if (isAssistantMessage(message)) addUsage(usage, message.usage);
@@ -89,6 +96,7 @@ function calculateRunStats(messages: readonly unknown[], elapsedMs: number, idle
 		totalTokens: usage.totalTokens,
 		elapsedTime: formatElapsedTime(elapsedSeconds),
 		idleTime: formatElapsedTime(idleMs / 1000),
+		time: formatTime(endedAt),
 	};
 }
 
@@ -129,13 +137,14 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 		agentStartMs = null;
 		if (elapsedMs <= 0) return;
 
-		const nextRunStats = calculateRunStats(event.messages, elapsedMs, idleTimeMs);
+		const nextRunStats = calculateRunStats(event.messages, elapsedMs, idleTimeMs, new Date());
 		if (!nextRunStats) return;
 		runStats = nextRunStats;
 		requestFooterRender?.();
 
 		if (!ctx.hasUI) return;
-		ctx.ui.notify(formatRunNotification(nextRunStats), "info");
+		const configuration = resolveFooterConfiguration(ctx);
+		ctx.ui.notify(renderRunNotification(configuration.notificationTemplate, nextRunStats), "info");
 	});
 
 	// A custom footer is not automatically invalidated by every state change
@@ -173,13 +182,14 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 		if (ctx.mode !== "tui") return;
 
 		const configuration = resolveFooterConfiguration(ctx);
-		if (!configuration) {
+		if (!configuration.template) {
 			if (customFooterInstalled) {
 				ctx.ui.setFooter(undefined);
 				customFooterInstalled = false;
 			}
 			return;
 		}
+		const footerTemplate = configuration.template;
 
 		ctx.ui.setFooter((tui, theme, footerData) => {
 			const requestRender = () => tui.requestRender();
@@ -196,7 +206,7 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 						runStats,
 						configuration.autoCompactionEnabled,
 					);
-					return renderTemplate(configuration.template, fields, width, theme);
+					return renderTemplate(footerTemplate, fields, width, theme);
 				},
 				dispose() {
 					unsubscribeBranchChanges();

@@ -16,6 +16,7 @@ export interface RunStats {
 	totalTokens: number;
 	elapsedTime: string;
 	idleTime: string;
+	time: string;
 }
 
 export interface SessionUsage {

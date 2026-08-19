@@ -11,7 +11,10 @@ interface SettingsObject {
 }
 
 export interface FooterConfiguration {
-	template: string;
+	/** Footer template, or undefined to leave pi's built-in footer in place. */
+	template: string | undefined;
+	/** Per-message throughput notification template, or undefined for the built-in format. */
+	notificationTemplate: string | undefined;
 	autoCompactionEnabled: boolean;
 }
 
@@ -29,14 +32,23 @@ function readSettingsFile(file: string): SettingsObject | undefined {
 	}
 }
 
+function nonEmpty(value: string | undefined): string | undefined {
+	return value !== undefined && value.trim() !== "" ? value : undefined;
+}
+
 /** An empty or whitespace-only template is treated as unset, leaving pi's built-in footer in place. */
 function getFooterTemplate(settings: SettingsObject | undefined): string | undefined {
 	const value = settings?.footerTemplate;
-	if (typeof value === "string") return value.trim() === "" ? undefined : value;
-	if (isRecord(value) && typeof value.template === "string") {
-		return value.template.trim() === "" ? undefined : value.template;
-	}
+	if (typeof value === "string") return nonEmpty(value);
+	if (isRecord(value) && typeof value.template === "string") return nonEmpty(value.template);
 	return undefined;
+}
+
+/** The per-message notification template, only available in object form. */
+function getNotificationTemplate(settings: SettingsObject | undefined): string | undefined {
+	const value = settings?.footerTemplate;
+	if (!isRecord(value) || typeof value.notificationTemplate !== "string") return undefined;
+	return nonEmpty(value.notificationTemplate);
 }
 
 function getCompactionEnabled(settings: SettingsObject | undefined): boolean | undefined {
@@ -45,19 +57,16 @@ function getCompactionEnabled(settings: SettingsObject | undefined): boolean | u
 	return compaction.enabled;
 }
 
-export function resolveFooterConfiguration(ctx: ExtensionContext): FooterConfiguration | undefined {
+export function resolveFooterConfiguration(ctx: ExtensionContext): FooterConfiguration {
 	const globalSettings = readSettingsFile(join(getAgentDir(), "settings.json"));
 	const projectSettings = ctx.isProjectTrusted()
 		? readSettingsFile(join(ctx.cwd, CONFIG_DIR_NAME, "settings.json"))
 		: undefined;
-	const template = getFooterTemplate(projectSettings) ?? getFooterTemplate(globalSettings);
-
-	// With no template configured, leave pi's native footer in place instead of
-	// replacing it with a second approximation of the built-in layout.
-	if (template === undefined) return undefined;
 
 	return {
-		template,
+		template: getFooterTemplate(projectSettings) ?? getFooterTemplate(globalSettings),
+		notificationTemplate:
+			getNotificationTemplate(projectSettings) ?? getNotificationTemplate(globalSettings),
 		autoCompactionEnabled:
 			getCompactionEnabled(projectSettings) ?? getCompactionEnabled(globalSettings) ?? true,
 	};

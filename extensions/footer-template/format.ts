@@ -97,6 +97,27 @@ export function formatTokenStats(
 	return tokenStats.join(" ");
 }
 
+/** Wall-clock time in 24-hour HH:MM:SS (local time). */
+export function formatTime(date: Date): string {
+	const pad = (value: number) => value.toString().padStart(2, "0");
+	return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+/** Fields describing the most recent completed agent run. */
+export function getRunStatsFields(stats: RunStats): Record<string, string> {
+	return {
+		tokensPerSecond: stats.tokensPerSecond.toFixed(1),
+		input: formatCount(stats.input),
+		output: formatCount(stats.output),
+		cacheRead: formatCount(stats.cacheRead),
+		cacheWrite: formatCount(stats.cacheWrite),
+		totalTokens: formatCount(stats.totalTokens),
+		elapsedTime: stats.elapsedTime,
+		idleTime: stats.idleTime,
+		time: stats.time,
+	};
+}
+
 export function getFieldValues(
 	ctx: ExtensionContext,
 	footerData: ReadonlyFooterDataProvider,
@@ -114,17 +135,10 @@ export function getFieldValues(
 	const tokenStats = formatTokenStats(totals, latestCacheHitRate, usingSubscription);
 
 	return {
+		...getRunStatsFields(runStats),
 		cwd: formatCwdForFooter(ctx.sessionManager.getCwd(), process.env.HOME || process.env.USERPROFILE),
 		gitBranch: footerData.getGitBranch() || "",
 		sessionName: ctx.sessionManager.getSessionName() || "",
-		tokensPerSecond: runStats.tokensPerSecond.toFixed(1),
-		input: formatCount(runStats.input),
-		output: formatCount(runStats.output),
-		cacheRead: formatCount(runStats.cacheRead),
-		cacheWrite: formatCount(runStats.cacheWrite),
-		totalTokens: formatCount(runStats.totalTokens),
-		elapsedTime: runStats.elapsedTime,
-		idleTime: runStats.idleTime,
 		latestCacheHitRate: latestCacheHitRate === undefined ? "" : latestCacheHitRate.toFixed(1),
 		cost: totals.cost.toFixed(3),
 		percent,
@@ -137,8 +151,13 @@ export function getFieldValues(
 	};
 }
 
-export function formatRunNotification(stats: RunStats): string {
-	return `TPS ${stats.tokensPerSecond.toFixed(1)} tok/s. out ${stats.output.toLocaleString()}, in ${stats.input.toLocaleString()}, cache r/w ${stats.cacheRead.toLocaleString()}/${stats.cacheWrite.toLocaleString()}, total ${stats.totalTokens.toLocaleString()}, ${stats.elapsedTime} elapsed after ${stats.idleTime}'s idle`;
+/** The notification format used when no custom template is configured. */
+export const DEFAULT_RUN_NOTIFICATION_TEMPLATE =
+	"TPS {tokensPerSecond} tok/s. out {output}, in {input}, cache r/w {cacheRead}/{cacheWrite}, total {totalTokens}, {elapsedTime} elapsed after {idleTime}'s idle at {time}";
+
+/** Render the per-message throughput notification; undefined or empty falls back to the default format. */
+export function renderRunNotification(template: string | undefined, stats: RunStats): string {
+	return expandTemplate(template?.trim() || DEFAULT_RUN_NOTIFICATION_TEMPLATE, getRunStatsFields(stats));
 }
 
 function expandTemplate(template: string, fields: Record<string, string>): string {
