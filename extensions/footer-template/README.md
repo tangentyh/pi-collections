@@ -11,10 +11,11 @@ After an agent run that produces output, the extension shows a notification in
 this format:
 
 ```text
-TPS {tokensPerSecond} tok/s. out {output}, in {input}, cache r/w {cacheRead}/{cacheWrite}, total {totalTokens}, {elapsedTime}
+TPS {tokensPerSecond} tok/s. out {output}, in {input}, cache r/w {cacheRead}/{cacheWrite}, total {totalTokens}, {elapsedTime} elapsed after {idleTime}'s idle
 ```
 
-The fields are calculated from the run's assistant messages:
+Usage fields are calculated from the run's assistant messages; timing fields are
+measured by the extension:
 
 - `tokensPerSecond` — output tokens divided by elapsed time, formatted to one decimal place
 - `output` — output-token count
@@ -22,6 +23,7 @@ The fields are calculated from the run's assistant messages:
 - `cacheRead` / `cacheWrite` — cache-read and cache-write token counts
 - `totalTokens` — total-token count
 - `elapsedTime` — elapsed time, shown as seconds, minutes and seconds, or hours, minutes and seconds
+- `idleTime` — time since the previous agent run ended, or since `session_start` for the first message, formatted like `elapsedTime`
 
 ## Install
 
@@ -123,7 +125,7 @@ project settings:
 Planned placeholders include:
 
 - `{cwd}`, `{gitBranch}`, and `{sessionName}`
-- `{tokensPerSecond}`, `{input}`, `{output}`, `{cacheRead}`, `{cacheWrite}`, `{totalTokens}`, `{elapsedTime}`, and `{latestCacheHitRate}`
+- `{tokensPerSecond}`, `{input}`, `{output}`, `{cacheRead}`, `{cacheWrite}`, `{totalTokens}`, `{elapsedTime}`, `{idleTime}`, and `{latestCacheHitRate}`
 - `{cost}`, `{percent}`, and `{contextWindow}`
 - `{tokenStats}`, `{contextUsage}`, and `{modelInfo}`
 - `{extensionStatuses}` and `{xp}`

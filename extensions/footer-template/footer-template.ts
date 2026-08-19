@@ -27,16 +27,22 @@ function formatElapsedTime(elapsedSeconds: number): string {
  */
 export default function footerTemplate(pi: ExtensionAPI): void {
 	let agentStartMs: number | null = null;
+	let lastAgentEndMs: number | null = null;
+	let idleTimeMs = 0;
 
 	pi.on("agent_start", () => {
-		agentStartMs = performance.now();
+		const now = performance.now();
+		idleTimeMs = lastAgentEndMs === null ? 0 : Math.max(0, now - lastAgentEndMs);
+		agentStartMs = now;
 	});
 
 	pi.on("agent_end", (event, ctx) => {
+		const endedAtMs = performance.now();
+		lastAgentEndMs = endedAtMs;
 		if (!ctx.hasUI) return;
 		if (agentStartMs === null) return;
 
-		const elapsedMs = performance.now() - agentStartMs;
+		const elapsedMs = endedAtMs - agentStartMs;
 		agentStartMs = null;
 		if (elapsedMs <= 0) return;
 
@@ -60,11 +66,15 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 		const elapsedSeconds = elapsedMs / 1000;
 		const tokensPerSecond = output / elapsedSeconds;
 		const elapsedTime = formatElapsedTime(elapsedSeconds);
-		const message = `TPS ${tokensPerSecond.toFixed(1)} tok/s. out ${output.toLocaleString()}, in ${input.toLocaleString()}, cache r/w ${cacheRead.toLocaleString()}/${cacheWrite.toLocaleString()}, total ${totalTokens.toLocaleString()}, ${elapsedTime}`;
+		const idleTime = formatElapsedTime(idleTimeMs / 1000);
+		const message = `TPS ${tokensPerSecond.toFixed(1)} tok/s. out ${output.toLocaleString()}, in ${input.toLocaleString()}, cache r/w ${cacheRead.toLocaleString()}/${cacheWrite.toLocaleString()}, total ${totalTokens.toLocaleString()}, ${elapsedTime} elapsed after ${idleTime}'s idle`;
 		ctx.ui.notify(message, "info");
 	});
 
 	pi.on("session_start", (_event, ctx) => {
+		agentStartMs = null;
+		lastAgentEndMs = performance.now();
+		idleTimeMs = 0;
 		if (ctx.mode !== "tui") return;
 
 		// TODO: resolve the configured template and render footer placeholders.
