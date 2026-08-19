@@ -12,27 +12,28 @@ trusted) or global settings. Project settings take precedence:
 ```json
 {
   "footerTemplate": {
-    "template": "{cwd}{gitBranch}{sessionName}\n{tokenStats} Σ{totalTokens} {contextUsage}{contextTokens}{xp}{modelInfo:right}\n{extensionStatuses}",
+    "template": "{cwd}{gitBranch}{sessionName}{balance:right}\n{tokenStats} Σ{totalTokens} {contextUsage}{contextTokens}{xp}{modelInfo:right}\n{extensionStatuses}",
     "notificationTemplate": "{time} ({elapsedTime} elapsed/{idleTime} idle) — {tokensPerSecond} tok/s, {cost}, {output} out, {input} in, cache r/w {cacheRead}/{cacheWrite}, Σ{totalTokens}"
   }
 }
 ```
 
 The default template — used when no template is configured — mirrors the
-layout of pi's built-in footer, with the absolute context-usage token count
-appended after `{contextUsage}` and the cumulative total-token count right
-after `{tokenStats}`:
+layout of pi's built-in footer, with the account balance right-aligned on the
+first line, the absolute context-usage token count appended after
+`{contextUsage}`, and the cumulative total-token count right after
+`{tokenStats}`:
 
 ```text
-{cwd}{gitBranch}{sessionName}
+{cwd}{gitBranch}{sessionName}{balance:right}
 {tokenStats} Σ{totalTokens} {contextUsage}{contextTokens}{xp}{modelInfo:right}
 {extensionStatuses}
 ```
 
-So the stats line shows e.g. `12.3%/200k (24,680)` — the percentage, the
-context window, and the absolute number of tokens currently used — and
-`Σ68,234` right after the token statistics, the cumulative total
-tokens used across the session.
+So the first line shows e.g. `~/project (main)   DeepSeek: $17.35`, the stats
+line shows e.g. `12.3%/200k (24,680)` — the percentage, the context window,
+and the absolute number of tokens currently used — and `Σ68,234` right after
+the token statistics, the cumulative total tokens used across the session.
 
 `{gitBranch}`, `{sessionName}`, and `{xp}` carry their leading separators (see
 the field table below), and the `:right` modifier pushes a field to the right
@@ -58,8 +59,9 @@ both sides are objects their keys merge, so a project that only sets
 `notificationTemplate` then disables the notification even when a global one
 is defined, just as an empty `template` disables the custom footer. When no
 template is configured, the extension applies its default template, which
-mirrors pi's built-in footer layout plus the absolute context-usage token
-count and the cumulative total-token count (shown above). An empty or whitespace-only template disables the custom
+mirrors pi's built-in footer layout plus the account balance, the absolute
+context-usage token count, and the cumulative total-token count (shown
+above). An empty or whitespace-only template disables the custom
 footer, so pi's built-in footer remains active. Reload pi after changing the
 setting.
 
@@ -85,7 +87,8 @@ These fields provide the values shown by pi's built-in footer:
 | `{contextTokens}` | ` (24,680)` — absolute number of context tokens currently used, with a leading space and parentheses; empty when the usage percentage is unknown or no model context is available |
 | `{modelInfo}` | Model name, thinking level, and provider when multiple providers are available |
 | `{extensionStatuses}` | Persistent extension statuses, sorted and joined on one line |
-| `{deepseekBalance}` | DeepSeek API account balance, e.g. `DeepSeek: $17.35`, converted to the configured display currency when possible; only rendered when the active model's provider is DeepSeek, empty otherwise (see below) |
+| `{balance}` | Account balance of the active provider, e.g. `DeepSeek: $17.35`, converted to the configured display currency when possible; empty when the active provider has no balance endpoint (see [Account balance](#account-balance)) |
+| `{deepseekBalance}` | Deprecated alias of `{balance}` that renders only while the active provider is DeepSeek |
 | `{xp}` | ` • xp` when `PI_EXPERIMENTAL=1`, otherwise empty |
 
 Appending `:right` to any field name right-aligns that field's value on its
@@ -96,11 +99,11 @@ the built-in stats line (left part first, then the right part).
 
 `{tokenStats}` includes usage from assistant messages, tool results, and
 compaction/branch-summary generation, matching pi's built-in totals. Its token
-counts use pi's compact format (`1.2k`, `3M`, and so on). One caveat: the
-`(sub)` marker after the cost figure is shown only when the active provider is
-`kimi-coding`. Pi's built-in footer additionally flags Anthropic and OpenAI
-subscription plans, but its `modelRuntime.isUsingSubscription()` check is not
-exposed to extensions, so those plans render without the marker here.
+counts use pi's compact format (`1.2k`, `3M`, and so on). The `(sub)` marker
+after the cost figure flags subscription-backed usage exactly like pi's
+built-in footer: it appears for Kimi Coding (subscription-backed despite using
+API-key authentication) and for OAuth providers whose provider definition
+marks the auth as a subscription (e.g. Anthropic and OpenAI plans).
 
 ## Per-run stats notification
 
@@ -138,7 +141,7 @@ and `{time}` is empty.
 
 ## Multi-currency cost display
 
-Cost figures — the `{cost}` field, the cost entry in `{tokenStats}`, the run-stats notification, and the `{deepseekBalance}` amount — are priced in USD by the model registry and converted to a configurable display currency, like [pi-tidy-footer](https://github.com/eriiic7z/pi-tidy-footer).
+Cost figures — the `{cost}` field, the cost entry in `{tokenStats}`, the run-stats notification, and the `{balance}` amount — are priced in USD by the model registry and converted to a configurable display currency, like [pi-tidy-footer](https://github.com/eriiic7z/pi-tidy-footer).
 
 | Command | Effect |
 | --- | --- |
@@ -147,32 +150,42 @@ Cost figures — the `{cost}` field, the cost entry in `{tokenStats}`, the run-s
 
 Available currencies: `AUD` (A$), `CAD` (C$), `CNY` (¥), `EUR` (€), `GBP` (£), `HKD` (HK$), `JPY` (¥), `KRW` (₩), `TWD` (NT$), `USD` ($, the default). Each currency defines its own decimal places (0 for JPY/KRW, 3 for USD, 2 otherwise), matching pi-tidy-footer. The selection persists across restarts in `~/.pi/agent/extensions/pi-footer-template-state.json`.
 
-Exchange rates come from the free `@fawazahmed0/currency-api` package (served from the jsdelivr CDN, USD base). They are fetched once per 24 hours on session start and after `/set-currency` changes, cached in memory, and persisted in the same state file; fetch failures keep the previous cache. USD needs no rates at all, so it always works offline. When a non-USD currency is selected and no rate is available, the cost renders as the currency symbol with `--` (e.g. `€--`), and the DeepSeek balance falls back to its native currency formatting.
+Exchange rates come from the free `@fawazahmed0/currency-api` package (served from the jsdelivr CDN, USD base). They are fetched once per 24 hours on session start and after `/set-currency` changes, cached in memory, and persisted in the same state file; fetch failures keep the previous cache. USD needs no rates at all, so it always works offline. When a non-USD currency is selected and no rate is available, the cost renders as the currency symbol with `--` (e.g. `€--`), and the account balance falls back to its native currency formatting.
 
-## DeepSeek account balance
+## Account balance
 
-`{deepseekBalance}` shows the remaining DeepSeek API account balance, like
-the [pi-deepseek-usage](https://github.com/shaftoe/pi-deepseek-usage)
-extension: `DeepSeek: $17.35`. USD is preferred, otherwise the first
-reported currency is used (`¥` for CNY, otherwise the currency code). The
-value is fetched from the DeepSeek balance endpoint
-(`GET https://api.deepseek.com/user/balance`) using the DeepSeek API key
-from pi's model registry, and cached for 30 seconds to avoid excessive API
-calls.
+`{balance}` shows the remaining account balance of the active provider, like
+[pi-tidy-footer](https://github.com/eriiic7z/pi-tidy-footer) and
+[pi-deepseek-usage](https://github.com/shaftoe/pi-deepseek-usage):
+`DeepSeek: $17.35`. The supported providers and their balance endpoints:
 
-The field is empty when the active model's provider is not a DeepSeek
-provider, and when the account reports no balances it renders as
-`DeepSeek: No balance`. Fetch failures render as `DeepSeek: <err:code>`
+| Provider id | Label | Endpoint | Native currency |
+| --- | --- | --- | --- |
+| `deepseek` | DeepSeek | `GET https://api.deepseek.com/user/balance` | reported (USD preferred, else first) |
+| `moonshotai-cn` | Moonshot | `GET https://api.moonshot.cn/v1/users/me/balance` | CNY |
+| `openrouter` | OpenRouter | `GET https://openrouter.ai/api/v1/credits` | USD |
+| `siliconflow` | SiliconFlow | `GET https://api.siliconflow.cn/v1/user/info` | CNY |
+| `zhipu` | Zhipu | `GET https://open.bigmodel.cn/api/paas/v4/account/billing` | CNY |
+
+The field is empty when the active model's provider is not in the table. The
+balance is fetched with the provider's API key from pi's model registry and
+cached for 30 seconds to avoid excessive API calls; a provider switch
+refetches immediately. When the account reports no balance it renders as
+`<Label>: No balance`. Fetch failures render as `<Label>: <err:code>`
 (`http401` for a missing or invalid API key, `fetch` for network errors,
 `badjson` for malformed responses) and are retried on the next refresh.
 The balance refreshes on session start, on model selection, and after each
-turn, and is recalculated without restarting pi. When the configured
-display currency differs from the balance's own currency, the amount is
-converted with the same daily FX rates used for costs (`/set-currency`); without a
-rate, the balance keeps its native currency. Like pi-deepseek-usage,
-requests are sent with `Accept-Encoding: identity` to avoid pi's undici
-gzip-decompression issue, and the `proxy-managed` key sentinel is
-respected in sandboxed environments.
+turn, and is recalculated without restarting pi. When the configured display
+currency differs from the balance's own currency, the amount is converted with
+the same daily FX rates used for costs (`/set-currency`); without a rate, the
+balance keeps its native currency. Like pi-deepseek-usage, requests are sent
+with `Accept-Encoding: identity` to avoid pi's undici gzip-decompression
+issue, and the `proxy-managed` key sentinel is respected in sandboxed
+environments.
+
+The `{deepseekBalance}` field from earlier versions is kept as an alias that
+renders the same value only while the active provider is DeepSeek; new
+templates should use `{balance}`.
 
 ## Install
 
@@ -202,8 +215,9 @@ The built-in footer renders two lines, plus an optional extension-status line:
 
 The third line appears only when extension statuses exist. The model
 information is right-aligned and may include the provider when multiple
-providers are available. The default template above renders this same layout, plus the absolute
-context-usage token count appended after `{contextUsage}` and the cumulative
+providers are available. The default template above renders this same layout,
+plus the account balance right-aligned on the first line, the absolute
+context-usage token count appended after `{contextUsage}`, and the cumulative
 total-token count right after `{tokenStats}`.
 The built-in footer also handles width-aware truncation and context-usage
 coloring; a custom template controls its own spacing and styling.
@@ -270,5 +284,5 @@ automatically.
 - The per-run stats notification fires after every output-producing run,
   independently of the footer template; an explicitly empty
   `notificationTemplate` disables it.
-- Cost and DeepSeek-balance figures are converted into the currency selected
+- Cost and account-balance figures are converted into the currency selected
   with `/set-currency`; USD is the default and needs no exchange rates.

@@ -8,7 +8,7 @@ A **development-only npm workspace** that collects [pi](https://github.com/earen
 |---------|-------------|
 | [pi-focus-aware-blinking-cursor](extensions/focus-aware-blinking-cursor-and-border) | Blinking cursor when focused; border dims when the terminal loses focus |
 | [pi-scroll-speed](extensions/scroll-speed) | Lines scrolled per mouse-wheel notch in pi fullscreen mode |
-| [pi-footer-template](extensions/footer-template) | Render pi's footer from a configurable string template (the default mirrors the built-in footer plus absolute context-token usage); time and response throughput are reported in a notification configured the same way |
+| [pi-footer-template](extensions/footer-template) | Render pi's footer from a configurable string template (the default mirrors the built-in footer plus the right-aligned account balance and absolute context-token usage); time and response throughput are reported in a notification configured the same way; multi-provider account balance mirrors pi-tidy-footer |
 
 Each package has its own `README.md` and `LICENSE` (MIT) in its directory — click the name to explore.
 

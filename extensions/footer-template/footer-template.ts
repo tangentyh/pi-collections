@@ -1,13 +1,14 @@
 import type { AssistantMessage, Usage } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
-	DEEPSEEK_BALANCE_CACHE_MS,
-	DeepSeekBalanceError,
-	fetchDeepSeekBalance,
-	formatDeepSeekBalance,
-	isDeepSeekProvider,
-	resolveBalanceValue,
-} from "./deepseek.js";
+	BALANCE_CACHE_MS,
+	BALANCE_PROVIDERS,
+	BalanceError,
+	fetchBalance,
+	formatBalanceText,
+	resolveBalanceProvider,
+} from "./balance.js";
+import type { BalanceValue } from "./balance.js";
 import { CURRENCIES, CURRENCY_LIST, getFxRates, readCostCurrency, refreshFxIfStale, writeCostCurrency } from "./currency.js";
 import {
 	DEFAULT_FOOTER_TEMPLATE,
@@ -121,46 +122,60 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 	let requestFooterRender: (() => void) | undefined;
 	let customFooterInstalled = false;
 
-	// DeepSeek account balance behind the {deepseekBalance} field. Refreshed
-	// at most once per cache window (mirroring pi-deepseek-usage's 30s cache),
-	// on session start, model selection, and after each turn; fetch errors are
-	// not cached and render as `DeepSeek: <err:code>` until the next refresh.
+	// Account balance behind the {balance} field (the {deepseekBalance} alias
+	// renders it for DeepSeek only). Supported providers mirror pi-tidy-footer:
+	// deepseek, moonshotai-cn, openrouter, siliconflow, zhipu. Refreshed at most
+	// once per cache window (mirroring pi-deepseek-usage's 30s cache), on
+	// session start, model selection, and after each turn; fetch errors are
+	// not cached and render as `<Label>: <err:code>` until the next refresh.
 	// The numeric value is kept alongside the rendered text so the balance can
 	// be converted into the configured display currency.
-	let deepseekBalance = "";
-	let deepseekBalanceValue: { amount: number; currency: string } | undefined;
-	let deepseekBalanceFreshUntil = 0;
-	let deepseekBalanceFetching: Promise<void> | undefined;
+	let balanceText = "";
+	let balanceValue: BalanceValue | undefined;
+	let balanceProvider: string | undefined;
+	let balanceFreshUntil = 0;
+	let balanceFetching: Promise<void> | undefined;
+	let balanceFetchSeq = 0;
 
-	const refreshDeepseekBalance = (ctx: ExtensionContext): void => {
-		if (!isDeepSeekProvider(ctx.model?.provider)) {
-			if (deepseekBalance) {
-				deepseekBalance = "";
-				deepseekBalanceValue = undefined;
+	const refreshBalance = (ctx: ExtensionContext): void => {
+		const provider = resolveBalanceProvider(ctx.model?.provider);
+		if (!provider) {
+			if (balanceText) {
+				balanceText = "";
+				balanceValue = undefined;
+				balanceProvider = undefined;
 				requestFooterRender?.();
 			}
 			return;
 		}
 		const now = Date.now();
-		if (now < deepseekBalanceFreshUntil || deepseekBalanceFetching) return;
-		deepseekBalanceFetching = (async () => {
+		// A provider switch invalidates the cache: refetch immediately.
+		if (balanceProvider === provider && (now < balanceFreshUntil || balanceFetching)) return;
+		const label = BALANCE_PROVIDERS[provider].label;
+		// The sequence token guards the finally-block: when the provider
+		// switches mid-fetch, the superseded request must not clear the
+		// in-flight flag of its replacement.
+		const seq = ++balanceFetchSeq;
+		const fetching = (async () => {
 			try {
-				const data = await fetchDeepSeekBalance(ctx.modelRegistry);
+				const value = await fetchBalance(provider, ctx.modelRegistry);
 				// The provider may have changed while the request was in flight.
-				if (!isDeepSeekProvider(ctx.model?.provider)) return;
-				deepseekBalance = formatDeepSeekBalance(data);
-				deepseekBalanceValue = resolveBalanceValue(data);
-				deepseekBalanceFreshUntil = Date.now() + DEEPSEEK_BALANCE_CACHE_MS;
+				if (resolveBalanceProvider(ctx.model?.provider) !== provider) return;
+				balanceText = formatBalanceText(label, value);
+				balanceValue = value ?? undefined;
+				balanceProvider = provider;
+				balanceFreshUntil = Date.now() + BALANCE_CACHE_MS;
 			} catch (error) {
-				if (!isDeepSeekProvider(ctx.model?.provider)) return;
-				const code = error instanceof DeepSeekBalanceError ? error.code : "fetch";
-				deepseekBalance = `DeepSeek: <err:${code}>`;
-				deepseekBalanceValue = undefined;
+				if (resolveBalanceProvider(ctx.model?.provider) !== provider) return;
+				const code = error instanceof BalanceError ? error.code : "fetch";
+				balanceText = `${label}: <err:${code}>`;
+				balanceValue = undefined;
 			} finally {
-				deepseekBalanceFetching = undefined;
+				if (seq === balanceFetchSeq) balanceFetching = undefined;
 				requestFooterRender?.();
 			}
 		})();
+		balanceFetching = fetching;
 	};
 
 	// Session entries are append-only, and every usage-bearing append is
@@ -220,13 +235,13 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 	pi.on("session_info_changed", requestRender);
 	pi.on("model_select", (_event, ctx) => {
 		requestRender();
-		refreshDeepseekBalance(ctx);
+		refreshBalance(ctx);
 	});
 	pi.on("thinking_level_select", requestRender);
 
 	// Like pi-deepseek-usage, refresh the account balance after each turn.
 	pi.on("turn_end", (_event, ctx) => {
-		refreshDeepseekBalance(ctx);
+		refreshBalance(ctx);
 	});
 
 	const invalidateUsageCache = () => {
@@ -252,10 +267,11 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 		runStats = emptyRunStats();
 		requestFooterRender = undefined;
 		sessionUsageCache = undefined;
-		deepseekBalance = "";
-		deepseekBalanceValue = undefined;
-		deepseekBalanceFreshUntil = 0;
-		deepseekBalanceFetching = undefined;
+		balanceText = "";
+		balanceValue = undefined;
+		balanceProvider = undefined;
+		balanceFreshUntil = 0;
+		balanceFetching = undefined;
 		if (ctx.mode !== "tui") return;
 
 		const configuration = resolveFooterConfiguration(ctx);
@@ -291,8 +307,9 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 							costCurrency: readCostCurrency(),
 							fxRates: getFxRates(),
 							autoCompactionEnabled: configuration.autoCompactionEnabled,
-							deepseekBalance,
-							deepseekBalanceValue,
+							balanceText,
+							balanceValue,
+							balanceProvider,
 						},
 					);
 					return renderTemplate(footerTemplate, fields, width, theme);
@@ -304,7 +321,7 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 			};
 		});
 		customFooterInstalled = true;
-		refreshDeepseekBalance(ctx);
+		refreshBalance(ctx);
 	});
 
 	pi.on("session_shutdown", (_event, ctx) => {
@@ -316,10 +333,11 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 		lastAgentEndMs = null;
 		requestFooterRender = undefined;
 		sessionUsageCache = undefined;
-		deepseekBalance = "";
-		deepseekBalanceValue = undefined;
-		deepseekBalanceFreshUntil = 0;
-		deepseekBalanceFetching = undefined;
+		balanceText = "";
+		balanceValue = undefined;
+		balanceProvider = undefined;
+		balanceFreshUntil = 0;
+		balanceFetching = undefined;
 	});
 
 	pi.registerCommand("set-currency", {
@@ -355,7 +373,7 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 			// the footer picks the rates up when the fetch completes.
 			void refreshFxIfStale().then(() => requestFooterRender?.());
 			ctx.ui.notify(
-				`Currency: ${ccy} (${CURRENCIES[ccy].symbol}). Cost and DeepSeek balance are now shown in ${ccy}.`,
+				`Currency: ${ccy} (${CURRENCIES[ccy].symbol}). Cost and account balances are now shown in ${ccy}.`,
 				"info",
 			);
 		},

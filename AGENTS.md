@@ -26,9 +26,10 @@ Currently in the collection:
 - `scroll-speed/` → npm `pi-scroll-speed` — lines scrolled per mouse-wheel notch in pi
   fullscreen mode
 - `footer-template/` → npm `pi-footer-template` — render pi's footer from a configurable
-  string template (the default mirrors the built-in footer plus absolute context-token
-  usage); time and response throughput are reported in a notification configured the
-  same way
+  string template (the default mirrors the built-in footer plus the right-aligned
+  account balance and absolute context-token usage); time and response throughput are
+  reported in a notification configured the same way; multi-provider account balance
+  mirrors pi-tidy-footer
 
 Keep this list here in `AGENTS.md` in sync with the table in `README.md` (same order, names, descriptions).
 When adding an extension, add it to both.

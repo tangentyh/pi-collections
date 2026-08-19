@@ -5,6 +5,7 @@ import type {
 	Theme,
 } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { BALANCE_PROVIDERS } from "./balance.js";
 import { CURRENCIES, ccyRate, formatCost } from "./currency.js";
 import type { RunStats, SessionUsage, UsageTotals } from "./types.js";
 
@@ -130,13 +131,14 @@ export function getRunStatsFields(
 }
 
 /**
- * The `{deepseekBalance}` value: the reported balance converted to the
- * configured display currency, e.g. `DeepSeek: €15.23`. When the conversion
- * is not possible (no cached rate for a non-USD display currency), the
- * balance falls back to its native currency formatting (`fallback`). The
- * amount is always shown with two decimals, keeping the documented format.
+ * The `{balance}` value: the reported balance converted to the configured
+ * display currency, e.g. `DeepSeek: €15.23`. When the conversion is not
+ * possible (no cached rate for a non-USD display currency), the balance
+ * falls back to its native currency formatting (`fallback`). The amount is
+ * always shown with two decimals, keeping the documented format.
  */
 function formatBalanceField(
+	label: string,
 	value: { amount: number; currency: string },
 	costCurrency: string,
 	fxRates: Record<string, number> | null | undefined,
@@ -146,11 +148,31 @@ function formatBalanceField(
 	const rate = ccyRate(costCurrency, fxRates);
 	if (rate === undefined) return fallback;
 	if (value.currency === costCurrency) {
-		return `DeepSeek: ${info.symbol}${value.amount.toFixed(2)}`;
+		return `${label}: ${info.symbol}${value.amount.toFixed(2)}`;
 	}
 	const sourceRate = ccyRate(value.currency, fxRates);
 	if (sourceRate === undefined) return fallback;
-	return `DeepSeek: ${info.symbol}${((value.amount / sourceRate) * rate).toFixed(2)}`;
+	return `${label}: ${info.symbol}${((value.amount / sourceRate) * rate).toFixed(2)}`;
+}
+
+/**
+ * Whether the active model's usage is backed by a subscription, mirroring
+ * pi's built-in footer: Kimi Coding is subscription-backed despite using
+ * API-key authentication, and OAuth providers advertise subscription backing
+ * through their OAuth auth definition.
+ */
+function isUsingSubscription(ctx: ExtensionContext): boolean {
+	const model = ctx.model;
+	if (!model) return false;
+	if (model.provider === "kimi-coding") return true;
+	try {
+		return (
+			ctx.modelRegistry.isUsingOAuth(model) &&
+			ctx.modelRegistry.getProvider(model.provider)?.auth?.oauth?.isSubscription === true
+		);
+	} catch {
+		return false;
+	}
 }
 
 /** Options controlling currency conversion and balance rendering of the fields. */
@@ -161,10 +183,12 @@ export interface FooterFieldOptions {
 	fxRates: Record<string, number> | null;
 	/** Whether auto-compaction is enabled (`(auto)` marker in {contextUsage}). */
 	autoCompactionEnabled: boolean;
-	/** `{deepseekBalance}` value: "", "DeepSeek: <err:...>", or "DeepSeek: No balance". */
-	deepseekBalance: string;
-	/** The numeric DeepSeek balance and its source currency, when available. */
-	deepseekBalanceValue: { amount: number; currency: string } | undefined;
+	/** `{balance}` value: "", "<Label>: <err:...>", or "<Label>: No balance". */
+	balanceText: string;
+	/** The numeric balance and its source currency, when available. */
+	balanceValue: { amount: number; currency: string } | undefined;
+	/** The provider key the balance belongs to (e.g. "deepseek", "openrouter"). */
+	balanceProvider: string | undefined;
 }
 
 export function getFieldValues(
@@ -189,7 +213,7 @@ export function getFieldValues(
 		contextUsageTokens === null || contextUsageTokens === undefined
 			? ""
 			: ` (${formatCount(contextUsageTokens)})`;
-	const usingSubscription = model?.provider === "kimi-coding";
+	const usingSubscription = isUsingSubscription(ctx);
 	const branch = footerData.getGitBranch();
 	const sessionName = ctx.sessionManager.getSessionName();
 
@@ -200,6 +224,22 @@ export function getFieldValues(
 		options.costCurrency,
 		options.fxRates,
 	);
+
+	// The `{balance}` field; the `{deepseekBalance}` alias renders it only
+	// while the active provider is DeepSeek.
+	const balanceLabel = options.balanceProvider
+		? (BALANCE_PROVIDERS[options.balanceProvider]?.label ?? options.balanceProvider)
+		: "";
+	const balanceField =
+		options.balanceValue && balanceLabel
+			? formatBalanceField(
+					balanceLabel,
+					options.balanceValue,
+					options.costCurrency,
+					options.fxRates,
+					options.balanceText,
+				)
+			: options.balanceText;
 
 	return {
 		...getRunStatsFields(runStats, options.costCurrency, options.fxRates),
@@ -218,21 +258,15 @@ export function getFieldValues(
 		contextTokens,
 		modelInfo: formatModelInfo(ctx, footerData),
 		extensionStatuses: formatExtensionStatuses(footerData),
-		deepseekBalance: options.deepseekBalanceValue
-			? formatBalanceField(
-					options.deepseekBalanceValue,
-					options.costCurrency,
-					options.fxRates,
-					options.deepseekBalance,
-				)
-			: options.deepseekBalance,
+		balance: balanceField,
+		deepseekBalance: options.balanceProvider === "deepseek" ? balanceField : "",
 		xp: process.env.PI_EXPERIMENTAL === "1" ? " • xp" : "",
 	};
 }
 
-/** The default footer template, mirroring pi's built-in footer layout plus the cumulative total-token count. */
+/** The default footer template, mirroring pi's built-in footer layout plus the cumulative total-token count and the right-aligned account balance. */
 export const DEFAULT_FOOTER_TEMPLATE =
-	"{cwd}{gitBranch}{sessionName}\n" +
+	"{cwd}{gitBranch}{sessionName}{balance:right}\n" +
 	"{tokenStats} Σ{totalTokens} {contextUsage}{contextTokens}{xp}{modelInfo:right}\n" +
 	"{extensionStatuses}";
 
@@ -274,7 +308,9 @@ function expandLine(
 	const left = expandTemplate(line.slice(0, rightMatch.index), fields);
 	const right =
 		fields[rightMatch[1]] + expandTemplate(line.slice(rightMatch.index + rightMatch[0].length), fields);
-	return { text: left + right, right: { left, right } };
+	// An empty right-aligned field (e.g. `{balance}` with no balance) leaves
+	// the line as its left part instead of padding it with trailing spaces.
+	return right === "" ? { text: left, right: undefined } : { text: left + right, right: { left, right } };
 }
 
 /**
