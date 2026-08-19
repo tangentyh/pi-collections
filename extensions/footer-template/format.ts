@@ -5,6 +5,7 @@ import type {
 	Theme,
 } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { CURRENCIES, ccyRate, formatCost } from "./currency.js";
 import type { RunStats, SessionUsage, UsageTotals } from "./types.js";
 
 const FIELD_PATTERN = /\{([A-Za-z][A-Za-z0-9_]*)(?::right)?\}/g;
@@ -83,6 +84,8 @@ export function formatTokenStats(
 	totals: UsageTotals,
 	latestCacheHitRate: number | undefined,
 	usingSubscription: boolean,
+	costCurrency: string,
+	fxRates: Record<string, number> | null,
 ): string {
 	const tokenStats: string[] = [];
 	if (totals.input) tokenStats.push(`↑${formatTokens(totals.input)}`);
@@ -93,7 +96,9 @@ export function formatTokenStats(
 		tokenStats.push(`CH${latestCacheHitRate.toFixed(1)}%`);
 	}
 	if (totals.cost || usingSubscription) {
-		tokenStats.push(`$${totals.cost.toFixed(3)}${usingSubscription ? " (sub)" : ""}`);
+		tokenStats.push(
+			`${formatCost(totals.cost, costCurrency, fxRates)}${usingSubscription ? " (sub)" : ""}`,
+		);
 	}
 	return tokenStats.join(" ");
 }
@@ -104,11 +109,15 @@ export function formatTime(date: Date): string {
 	return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
-/** Fields describing the most recent completed agent run. */
-export function getRunStatsFields(stats: RunStats): Record<string, string> {
+/** Fields describing the most recent completed agent run; `cost` is converted to the display currency. */
+export function getRunStatsFields(
+	stats: RunStats,
+	costCurrency: string,
+	fxRates: Record<string, number> | null,
+): Record<string, string> {
 	return {
 		tokensPerSecond: stats.tokensPerSecond.toFixed(1),
-		cost: stats.cost.toFixed(3),
+		cost: formatCost(stats.cost, costCurrency, fxRates),
 		input: formatCount(stats.input),
 		output: formatCount(stats.output),
 		cacheRead: formatCount(stats.cacheRead),
@@ -120,13 +129,50 @@ export function getRunStatsFields(stats: RunStats): Record<string, string> {
 	};
 }
 
+/**
+ * The `{deepseekBalance}` value: the reported balance converted to the
+ * configured display currency, e.g. `DeepSeek: €15.23`. When the conversion
+ * is not possible (no cached rate for a non-USD display currency), the
+ * balance falls back to its native currency formatting (`fallback`). The
+ * amount is always shown with two decimals, keeping the documented format.
+ */
+function formatBalanceField(
+	value: { amount: number; currency: string },
+	costCurrency: string,
+	fxRates: Record<string, number> | null | undefined,
+	fallback: string,
+): string {
+	const info = CURRENCIES[costCurrency] ?? CURRENCIES.USD;
+	const rate = ccyRate(costCurrency, fxRates);
+	if (rate === undefined) return fallback;
+	if (value.currency === costCurrency) {
+		return `DeepSeek: ${info.symbol}${value.amount.toFixed(2)}`;
+	}
+	const sourceRate = ccyRate(value.currency, fxRates);
+	if (sourceRate === undefined) return fallback;
+	return `DeepSeek: ${info.symbol}${((value.amount / sourceRate) * rate).toFixed(2)}`;
+}
+
+/** Options controlling currency conversion and balance rendering of the fields. */
+export interface FooterFieldOptions {
+	/** The configured display currency (a `CURRENCIES` key). */
+	costCurrency: string;
+	/** The cached USD-based exchange-rate table, or null when unavailable. */
+	fxRates: Record<string, number> | null;
+	/** Whether auto-compaction is enabled (`(auto)` marker in {contextUsage}). */
+	autoCompactionEnabled: boolean;
+	/** `{deepseekBalance}` value: "", "DeepSeek: <err:...>", or "DeepSeek: No balance". */
+	deepseekBalance: string;
+	/** The numeric DeepSeek balance and its source currency, when available. */
+	deepseekBalanceValue: { amount: number; currency: string } | undefined;
+}
+
 export function getFieldValues(
 	ctx: ExtensionContext,
 	footerData: ReadonlyFooterDataProvider,
 	sessionUsage: SessionUsage,
 	runStats: RunStats,
-	autoCompactionEnabled: boolean,
-	deepseekBalance: string,
+	options: FooterFieldOptions,
 ): Record<string, string> {
 	const { totals, latestCacheHitRate } = sessionUsage;
 	const model = ctx.model;
@@ -147,26 +193,39 @@ export function getFieldValues(
 	const branch = footerData.getGitBranch();
 	const sessionName = ctx.sessionManager.getSessionName();
 
-	const tokenStats = formatTokenStats(totals, latestCacheHitRate, usingSubscription);
+	const tokenStats = formatTokenStats(
+		totals,
+		latestCacheHitRate,
+		usingSubscription,
+		options.costCurrency,
+		options.fxRates,
+	);
 
 	return {
-		...getRunStatsFields(runStats),
+		...getRunStatsFields(runStats, options.costCurrency, options.fxRates),
 		cwd: formatCwdForFooter(ctx.sessionManager.getCwd(), process.env.HOME || process.env.USERPROFILE),
 		gitBranch: branch ? ` (${branch})` : "",
 		sessionName: sessionName ? ` • ${sessionName}` : "",
 		latestCacheHitRate: latestCacheHitRate === undefined ? "" : latestCacheHitRate.toFixed(1),
-		cost: totals.cost.toFixed(3),
+		cost: formatCost(totals.cost, options.costCurrency, options.fxRates),
 		// Overrides the run-stats totalTokens: in footer templates {totalTokens}
 		// is the cumulative session total, so it can sit next to {tokenStats}.
 		totalTokens: formatCount(totals.totalTokens),
 		percent,
 		contextWindow: formatTokens(contextWindow),
 		tokenStats,
-		contextUsage: `${percent}%/${formatTokens(contextWindow)}${autoCompactionEnabled ? " (auto)" : ""}`,
+		contextUsage: `${percent}%/${formatTokens(contextWindow)}${options.autoCompactionEnabled ? " (auto)" : ""}`,
 		contextTokens,
 		modelInfo: formatModelInfo(ctx, footerData),
 		extensionStatuses: formatExtensionStatuses(footerData),
-		deepseekBalance,
+		deepseekBalance: options.deepseekBalanceValue
+			? formatBalanceField(
+					options.deepseekBalanceValue,
+					options.costCurrency,
+					options.fxRates,
+					options.deepseekBalance,
+				)
+			: options.deepseekBalance,
 		xp: process.env.PI_EXPERIMENTAL === "1" ? " • xp" : "",
 	};
 }
@@ -177,13 +236,21 @@ export const DEFAULT_FOOTER_TEMPLATE =
 	"{tokenStats} ({totalTokens} total) {contextUsage}{contextTokens}{xp}{modelInfo:right}\n" +
 	"{extensionStatuses}";
 
-/** The notification format used when no custom template is configured. */
+/** The notification format used when no custom template is configured; `{cost}` carries its own currency symbol. */
 export const DEFAULT_RUN_NOTIFICATION_TEMPLATE =
-	"{time} ({elapsedTime} elapsed/{idleTime} idle) — {tokensPerSecond} tok/s, ${cost}, {output} out, {input} in, cache r/w {cacheRead}/{cacheWrite}, {totalTokens} total";
+	"{time} ({elapsedTime} elapsed/{idleTime} idle) — {tokensPerSecond} tok/s, {cost}, {output} out, {input} in, cache r/w {cacheRead}/{cacheWrite}, {totalTokens} total";
 
 /** Render the per-message throughput notification; an unset template falls back to the default format. */
-export function renderRunNotification(template: string | undefined, stats: RunStats): string {
-	return expandTemplate(template?.trim() || DEFAULT_RUN_NOTIFICATION_TEMPLATE, getRunStatsFields(stats));
+export function renderRunNotification(
+	template: string | undefined,
+	stats: RunStats,
+	costCurrency: string,
+	fxRates: Record<string, number> | null,
+): string {
+	return expandTemplate(
+		template?.trim() || DEFAULT_RUN_NOTIFICATION_TEMPLATE,
+		getRunStatsFields(stats, costCurrency, fxRates),
+	);
 }
 
 function expandTemplate(template: string, fields: Record<string, string>): string {

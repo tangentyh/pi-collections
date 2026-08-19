@@ -115,6 +115,20 @@ export function resolveBalance(data: DeepSeekBalanceData): DeepSeekBalanceData["
 	return data.balances.find((balance) => balance.currency === "USD") ?? data.balances[0];
 }
 
+/**
+ * The preferred balance as a numeric amount plus its source currency, or
+ * undefined when the account reports no balance or it is not a finite number.
+ * Used to convert the balance into the configured display currency.
+ */
+export function resolveBalanceValue(
+	data: DeepSeekBalanceData,
+): { amount: number; currency: string } | undefined {
+	const balance = resolveBalance(data);
+	if (!balance) return undefined;
+	const amount = parseFloat(balance.totalBalance);
+	return Number.isFinite(amount) ? { amount, currency: balance.currency } : undefined;
+}
+
 /** The currency symbol used by pi-deepseek-usage: $ for USD, ¥ for CNY, otherwise the code. */
 export function currencySymbol(currency: string): string {
 	if (currency === "USD") return "$";

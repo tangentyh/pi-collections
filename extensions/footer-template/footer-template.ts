@@ -6,7 +6,9 @@ import {
 	fetchDeepSeekBalance,
 	formatDeepSeekBalance,
 	isDeepSeekProvider,
+	resolveBalanceValue,
 } from "./deepseek.js";
+import { CURRENCIES, CURRENCY_LIST, getFxRates, readCostCurrency, refreshFxIfStale, writeCostCurrency } from "./currency.js";
 import {
 	DEFAULT_FOOTER_TEMPLATE,
 	formatElapsedTime,
@@ -123,7 +125,10 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 	// at most once per cache window (mirroring pi-deepseek-usage's 30s cache),
 	// on session start, model selection, and after each turn; fetch errors are
 	// not cached and render as `DeepSeek: <err:code>` until the next refresh.
+	// The numeric value is kept alongside the rendered text so the balance can
+	// be converted into the configured display currency.
 	let deepseekBalance = "";
+	let deepseekBalanceValue: { amount: number; currency: string } | undefined;
 	let deepseekBalanceFreshUntil = 0;
 	let deepseekBalanceFetching: Promise<void> | undefined;
 
@@ -131,6 +136,7 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 		if (!isDeepSeekProvider(ctx.model?.provider)) {
 			if (deepseekBalance) {
 				deepseekBalance = "";
+				deepseekBalanceValue = undefined;
 				requestFooterRender?.();
 			}
 			return;
@@ -143,11 +149,13 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 				// The provider may have changed while the request was in flight.
 				if (!isDeepSeekProvider(ctx.model?.provider)) return;
 				deepseekBalance = formatDeepSeekBalance(data);
+				deepseekBalanceValue = resolveBalanceValue(data);
 				deepseekBalanceFreshUntil = Date.now() + DEEPSEEK_BALANCE_CACHE_MS;
 			} catch (error) {
 				if (!isDeepSeekProvider(ctx.model?.provider)) return;
 				const code = error instanceof DeepSeekBalanceError ? error.code : "fetch";
 				deepseekBalance = `DeepSeek: <err:${code}>`;
+				deepseekBalanceValue = undefined;
 			} finally {
 				deepseekBalanceFetching = undefined;
 				requestFooterRender?.();
@@ -193,7 +201,15 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 		// Like the footer template, an explicit empty notification template
 		// opts out; only an unset one falls back to the default format.
 		if (configuration.notificationTemplate === "") return;
-		ctx.ui.notify(renderRunNotification(configuration.notificationTemplate, nextRunStats), "info");
+		ctx.ui.notify(
+			renderRunNotification(
+				configuration.notificationTemplate,
+				nextRunStats,
+				readCostCurrency(),
+				getFxRates(),
+			),
+			"info",
+		);
 	});
 
 	// A custom footer is not automatically invalidated by every state change
@@ -237,6 +253,7 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 		requestFooterRender = undefined;
 		sessionUsageCache = undefined;
 		deepseekBalance = "";
+		deepseekBalanceValue = undefined;
 		deepseekBalanceFreshUntil = 0;
 		deepseekBalanceFetching = undefined;
 		if (ctx.mode !== "tui") return;
@@ -252,6 +269,10 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 			}
 			return;
 		}
+		// Exchange rates for the configured display currency, fetched once per
+		// 24h; USD needs none. The footer reads the currency and rates lazily
+		// on every render, so a later /set-currency switch is picked up immediately.
+		void refreshFxIfStale().then(() => requestFooterRender?.());
 
 		ctx.ui.setFooter((tui, theme, footerData) => {
 			const requestRender = () => tui.requestRender();
@@ -266,8 +287,13 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 						footerData,
 						getSessionUsage(ctx),
 						runStats,
-						configuration.autoCompactionEnabled,
-						deepseekBalance,
+						{
+							costCurrency: readCostCurrency(),
+							fxRates: getFxRates(),
+							autoCompactionEnabled: configuration.autoCompactionEnabled,
+							deepseekBalance,
+							deepseekBalanceValue,
+						},
 					);
 					return renderTemplate(footerTemplate, fields, width, theme);
 				},
@@ -291,7 +317,47 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 		requestFooterRender = undefined;
 		sessionUsageCache = undefined;
 		deepseekBalance = "";
+		deepseekBalanceValue = undefined;
 		deepseekBalanceFreshUntil = 0;
 		deepseekBalanceFetching = undefined;
+	});
+
+	pi.registerCommand("set-currency", {
+		description:
+			"Currency for cost and DeepSeek balance: /set-currency <code> = set; no args = show",
+		getArgumentCompletions: (prefix) => {
+			const needle = prefix.trim().toUpperCase();
+			return Object.keys(CURRENCIES)
+				.filter((ccy) => ccy.startsWith(needle))
+				.map((ccy) => ({
+					value: ccy,
+					label: ccy,
+					description: `${CURRENCIES[ccy].symbol} (${ccy === "USD" ? "default" : "converted via daily FX"})`,
+				}));
+		},
+		handler: async (args, ctx) => {
+			const ccy = args.trim().toUpperCase();
+			if (!ccy) {
+				const current = readCostCurrency();
+				ctx.ui.notify(
+					`Currency: ${current} (${CURRENCIES[current]?.symbol ?? "$"}). Available: ${CURRENCY_LIST}`,
+					"info",
+				);
+				return;
+			}
+			if (!CURRENCIES[ccy]) {
+				ctx.ui.notify(`Invalid currency: "${ccy}". Available: ${CURRENCY_LIST}`, "error");
+				return;
+			}
+			writeCostCurrency(ccy);
+			requestFooterRender?.();
+			// Kick off a rate fetch so the new currency converts right away;
+			// the footer picks the rates up when the fetch completes.
+			void refreshFxIfStale().then(() => requestFooterRender?.());
+			ctx.ui.notify(
+				`Currency: ${ccy} (${CURRENCIES[ccy].symbol}). Cost and DeepSeek balance are now shown in ${ccy}.`,
+				"info",
+			);
+		},
 	});
 }

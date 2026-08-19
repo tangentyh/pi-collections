@@ -13,7 +13,7 @@ trusted) or global settings. Project settings take precedence:
 {
   "footerTemplate": {
     "template": "{cwd}{gitBranch}{sessionName}\n{tokenStats} ({totalTokens} total) {contextUsage}{contextTokens}{xp}{modelInfo:right}\n{extensionStatuses}",
-    "notificationTemplate": "{time} ({elapsedTime} elapsed/{idleTime} idle) — {tokensPerSecond} tok/s, ${cost}, {output} out, {input} in, cache r/w {cacheRead}/{cacheWrite}, {totalTokens} total"
+    "notificationTemplate": "{time} ({elapsedTime} elapsed/{idleTime} idle) — {tokensPerSecond} tok/s, {cost}, {output} out, {input} in, cache r/w {cacheRead}/{cacheWrite}, {totalTokens} total"
   }
 }
 ```
@@ -76,16 +76,16 @@ These fields provide the values shown by pi's built-in footer:
 | `{gitBranch}` | ` (branch)` — git branch in parentheses, leading space included; empty when unavailable |
 | `{sessionName}` | ` • name` — session name with a leading bullet; empty when unnamed |
 | `{latestCacheHitRate}` | Latest assistant cache-hit percentage, without the `%` sign |
-| `{cost}` | Cumulative cost, formatted to three decimal places |
+| `{cost}` | Cumulative cost, converted to the configured display currency (see [Multi-currency cost display](#multi-currency-cost-display)) |
 | `{percent}` | Current context usage percentage, formatted to one decimal place, or `?` |
 | `{contextWindow}` | Context-window size in pi's compact token format |
-| `{tokenStats}` | Cumulative input/output/cache/cost statistics |
+| `{tokenStats}` | Cumulative input/output/cache/cost statistics; the cost figure is converted to the configured display currency |
 | `{totalTokens}` | Cumulative total tokens used across the session (assistant messages, tool results, and compaction/branch-summary generation), as an exact count, e.g. `68,234` |
 | `{contextUsage}` | `{percent}%/{contextWindow}`, with `(auto)` when auto-compaction is enabled |
 | `{contextTokens}` | ` (24,680)` — absolute number of context tokens currently used, with a leading space and parentheses; empty when the usage percentage is unknown or no model context is available |
 | `{modelInfo}` | Model name, thinking level, and provider when multiple providers are available |
 | `{extensionStatuses}` | Persistent extension statuses, sorted and joined on one line |
-| `{deepseekBalance}` | DeepSeek API account balance, e.g. `DeepSeek: $17.35`; only rendered when the active model's provider is DeepSeek, empty otherwise (see below) |
+| `{deepseekBalance}` | DeepSeek API account balance, e.g. `DeepSeek: $17.35`, converted to the configured display currency when possible; only rendered when the active model's provider is DeepSeek, empty otherwise (see below) |
 | `{xp}` | ` • xp` when `PI_EXPERIMENTAL=1`, otherwise empty |
 
 Appending `:right` to any field name right-aligns that field's value on its
@@ -109,7 +109,7 @@ Its text is configurable via `notificationTemplate` in the `footerTemplate`
 settings object; without it, this default format is used:
 
 ```text
-{time} ({elapsedTime} elapsed/{idleTime} idle) — {tokensPerSecond} tok/s, ${cost}, {output} out, {input} in, cache r/w {cacheRead}/{cacheWrite}, {totalTokens} total
+{time} ({elapsedTime} elapsed/{idleTime} idle) — {tokensPerSecond} tok/s, {cost}, {output} out, {input} in, cache r/w {cacheRead}/{cacheWrite}, {totalTokens} total
 ```
 
 Unlike the footer, the notification is rendered from the run-stats fields only
@@ -128,13 +128,26 @@ cumulative `{tokenStats}`):
 - `{input}` — input-token count
 - `{cacheRead}` / `{cacheWrite}` — cache-read and cache-write token counts
 - `{totalTokens}` — total-token count
-- `{cost}` — cost of the run, formatted to three decimal places
+- `{cost}` — cost of the run, formatted in the configured display currency (see [Multi-currency cost display](#multi-currency-cost-display))
 - `{elapsedTime}` — elapsed time, shown as seconds, minutes and seconds, or hours, minutes and seconds
 - `{idleTime}` — time since the previous agent run ended, or since `session_start` for the first message, formatted like `{elapsedTime}`
 - `{time}` — wall-clock completion time of the run, in 24-hour `HH:MM:SS` (local time)
 
 Before the first completed run, these run-stats fields contain zero values
 and `{time}` is empty.
+
+## Multi-currency cost display
+
+Cost figures — the `{cost}` field, the cost entry in `{tokenStats}`, the run-stats notification, and the `{deepseekBalance}` amount — are priced in USD by the model registry and converted to a configurable display currency, like [pi-tidy-footer](https://github.com/eriiic7z/pi-tidy-footer).
+
+| Command | Effect |
+| --- | --- |
+| `/set-currency` | Show the current currency and the list of available codes |
+| `/set-currency <code>` | Set the display currency, e.g. `/set-currency EUR` |
+
+Available currencies: `AUD` (A$), `CAD` (C$), `CNY` (¥), `EUR` (€), `GBP` (£), `HKD` (HK$), `JPY` (¥), `KRW` (₩), `TWD` (NT$), `USD` ($, the default). Each currency defines its own decimal places (0 for JPY/KRW, 3 for USD, 2 otherwise), matching pi-tidy-footer. The selection persists across restarts in `~/.pi/agent/extensions/pi-footer-template-state.json`.
+
+Exchange rates come from the free `@fawazahmed0/currency-api` package (served from the jsdelivr CDN, USD base). They are fetched once per 24 hours on session start and after `/set-currency` changes, cached in memory, and persisted in the same state file; fetch failures keep the previous cache. USD needs no rates at all, so it always works offline. When a non-USD currency is selected and no rate is available, the cost renders as the currency symbol with `--` (e.g. `€--`), and the DeepSeek balance falls back to its native currency formatting.
 
 ## DeepSeek account balance
 
@@ -153,7 +166,10 @@ provider, and when the account reports no balances it renders as
 (`http401` for a missing or invalid API key, `fetch` for network errors,
 `badjson` for malformed responses) and are retried on the next refresh.
 The balance refreshes on session start, on model selection, and after each
-turn, and is recalculated without restarting pi. Like pi-deepseek-usage,
+turn, and is recalculated without restarting pi. When the configured
+display currency differs from the balance's own currency, the amount is
+converted with the same daily FX rates used for costs (`/set-currency`); without a
+rate, the balance keeps its native currency. Like pi-deepseek-usage,
 requests are sent with `Accept-Encoding: identity` to avoid pi's undici
 gzip-decompression issue, and the `proxy-managed` key sentinel is
 respected in sandboxed environments.
@@ -254,3 +270,5 @@ automatically.
 - The per-run stats notification fires after every output-producing run,
   independently of the footer template; an explicitly empty
   `notificationTemplate` disables it.
+- Cost and DeepSeek-balance figures are converted into the currency selected
+  with `/set-currency`; USD is the default and needs no exchange rates.
