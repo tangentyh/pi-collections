@@ -30,7 +30,7 @@ first line, the absolute context-usage token count appended after
 {extensionStatuses}
 ```
 
-So the first line shows e.g. `~/project (main)   DeepSeek: $17.35`, the stats
+So the first line shows e.g. `~/project (main)   DeepSeek: $17.35` (or `Claude: 5h:23% 7d:41%` for the OAuth subscription providers, see [Account balance and provider quota](#account-balance-and-provider-quota)), the stats
 line shows e.g. `12.3%/200k (24,680)` — the percentage, the context window,
 and the absolute number of tokens currently used — and `Σ68,234` right after
 the token statistics, the cumulative total tokens used across the session.
@@ -87,7 +87,7 @@ These fields provide the values shown by pi's built-in footer:
 | `{contextTokens}` | ` (24,680)` — absolute number of context tokens currently used, with a leading space and parentheses; empty when the usage percentage is unknown or no model context is available |
 | `{modelInfo}` | Model name, thinking level, and provider when multiple providers are available |
 | `{extensionStatuses}` | Persistent extension statuses, sorted and joined on one line |
-| `{balance}` | Account balance of the active provider, e.g. `DeepSeek: $17.35`, converted to the configured display currency when possible; empty when the active provider has no balance endpoint (see [Account balance](#account-balance)) |
+| `{balance}` | Account balance of the active provider, e.g. `DeepSeek: $17.35`, converted to the configured display currency when possible; for the OAuth subscription providers (Codex, Claude) it shows the provider quota status instead, e.g. `Claude: 5h:23% 7d:41%`; empty when the active provider has neither a balance endpoint nor quota windows (see [Account balance and provider quota](#account-balance-and-provider-quota)) |
 | `{deepseekBalance}` | Deprecated alias of `{balance}` that renders only while the active provider is DeepSeek |
 | `{xp}` | ` • xp` when `PI_EXPERIMENTAL=1`, otherwise empty |
 
@@ -152,7 +152,7 @@ Available currencies: `AUD` (A$), `CAD` (C$), `CNY` (¥), `EUR` (€), `GBP` (£
 
 Exchange rates come from the free `@fawazahmed0/currency-api` package (served from the jsdelivr CDN, USD base). They are fetched once per 24 hours on session start and after `/set-currency` changes, cached in memory, and persisted in the same state file; fetch failures keep the previous cache. USD needs no rates at all, so it always works offline. When a non-USD currency is selected and no rate is available, the cost renders as the currency symbol with `--` (e.g. `€--`), and the account balance falls back to its native currency formatting.
 
-## Account balance
+## Account balance and provider quota
 
 `{balance}` shows the remaining account balance of the active provider, like
 [pi-tidy-footer](https://github.com/eriiic7z/pi-tidy-footer) and
@@ -186,6 +186,33 @@ environments.
 The `{deepseekBalance}` field from earlier versions is kept as an alias that
 renders the same value only while the active provider is DeepSeek; new
 templates should use `{balance}`.
+
+### Provider quota status
+
+For the OAuth subscription providers, `{balance}` shows the rolling quota
+windows instead of a monetary balance, mirroring
+[pi-fancy-footer](https://github.com/mavam/pi-fancy-footer)'s provider-status
+widget and [pi-usage](https://github.com/Sreetej510/pi-extensions):
+`Claude: 5h:23% 7d:41%` — each window is its length (`5h`, `7d`) and the used
+percentage. A window at or above 75% used appends a reset countdown
+(`7d:86% ~3d4h`), and the Codex credit balance appears as `cr:12.34` when the
+account reports one. The supported quota providers and their endpoints:
+
+| Provider id | Label | Endpoint | Windows |
+| --- | --- | --- | --- |
+| `openai-codex` | Codex | `GET https://chatgpt.com/backend-api/wham/usage` | 5h, 7d |
+| `anthropic` | Claude | `GET https://api.anthropic.com/api/oauth/usage` | 5h, 7d |
+
+Quota status is fetched only while the active model uses OAuth auth for one of
+the quota providers (API-key Claude models have no subscription quota), using
+the same `Accept-Encoding: identity` and `proxy-managed` handling. Like
+pi-usage, the quota endpoints are polled at most once every 3 minutes (the
+balance refreshes at most every 30 s) with a 15-second request timeout, on the
+same triggers as the balance; a provider or auth switch refetches immediately.
+Windows whose usage is unknown render as `5h:—`. Fetch failures render as
+`<Label>: <err:code>` (`timeout` for timed-out requests, `fetch` for network
+errors, `http401` for missing or invalid OAuth credentials, `badjson` for
+malformed responses) and are retried on the next refresh.
 
 ## Install
 

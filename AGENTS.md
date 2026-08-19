@@ -29,7 +29,8 @@ Currently in the collection:
   string template (the default mirrors the built-in footer plus the right-aligned
   account balance and absolute context-token usage); time and response throughput are
   reported in a notification configured the same way; multi-provider account balance
-  mirrors pi-tidy-footer
+  mirrors pi-tidy-footer, plus provider quota status for Codex/Claude OAuth subscriptions
+  mirrors pi-usage/pi-fancy-footer
 
 Keep this list here in `AGENTS.md` in sync with the table in `README.md` (same order, names, descriptions).
 When adding an extension, add it to both.

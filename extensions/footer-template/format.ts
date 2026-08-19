@@ -189,6 +189,13 @@ export interface FooterFieldOptions {
 	balanceValue: { amount: number; currency: string } | undefined;
 	/** The provider key the balance belongs to (e.g. "deepseek", "openrouter"). */
 	balanceProvider: string | undefined;
+	/**
+	 * Provider quota status for OAuth subscription providers (Codex, Claude):
+	 * "", "<Label>: 5h:23% 7d:41%", or "<Label>: <err:...>". Non-empty only
+	 * while the active model's provider reports quota windows; it takes
+	 * precedence over the monetary balance in `{balance}`.
+	 */
+	quotaText: string;
 }
 
 export function getFieldValues(
@@ -226,12 +233,15 @@ export function getFieldValues(
 	);
 
 	// The `{balance}` field; the `{deepseekBalance}` alias renders it only
-	// while the active provider is DeepSeek.
+	// while the active provider is DeepSeek. OAuth subscription providers
+	// (Codex, Claude) have no monetary balance; their quota status replaces
+	// the balance value for them.
 	const balanceLabel = options.balanceProvider
 		? (BALANCE_PROVIDERS[options.balanceProvider]?.label ?? options.balanceProvider)
 		: "";
-	const balanceField =
-		options.balanceValue && balanceLabel
+	const balanceField = options.quotaText
+		? options.quotaText
+		: options.balanceValue && balanceLabel
 			? formatBalanceField(
 					balanceLabel,
 					options.balanceValue,

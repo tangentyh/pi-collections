@@ -9,6 +9,14 @@ import {
 	resolveBalanceProvider,
 } from "./balance.js";
 import type { BalanceValue } from "./balance.js";
+import {
+	QUOTA_CACHE_MS,
+	QUOTA_PROVIDERS,
+	QuotaError,
+	fetchQuota,
+	formatQuotaText,
+	resolveQuotaProvider,
+} from "./quota.js";
 import { CURRENCIES, CURRENCY_LIST, getFxRates, readCostCurrency, refreshFxIfStale, writeCostCurrency } from "./currency.js";
 import {
 	DEFAULT_FOOTER_TEMPLATE,
@@ -137,6 +145,68 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 	let balanceFetching: Promise<void> | undefined;
 	let balanceFetchSeq = 0;
 
+	// Provider quota status behind the {balance} field for the OAuth
+	// subscription providers (openai-codex, anthropic), mirroring
+	// pi-fancy-footer's provider-status widget and pi-usage: the rolling quota
+	// windows render as `<Label>: 5h:23% 7d:41%` with a reset countdown for
+	// windows at or above 75% used. Quota is only fetched while the active
+	// model uses OAuth (API-key models have no subscription quota). Refreshed
+	// at most once per cache window (3 min, like pi-usage) on the same events
+	// as the balance; fetch errors are not cached and render as
+	// `<Label>: <err:code>` until the next refresh.
+	let quotaText = "";
+	let quotaProvider: string | undefined;
+	let quotaFreshUntil = 0;
+	let quotaFetching: Promise<void> | undefined;
+	let quotaFetchSeq = 0;
+
+	const refreshQuota = (ctx: ExtensionContext): void => {
+		const provider = resolveQuotaProvider(ctx.model?.provider);
+		const usingOAuth =
+			!!ctx.model && (ctx.modelRegistry.isUsingOAuth(ctx.model) ?? false);
+		if (!provider || !usingOAuth) {
+			if (quotaText) {
+				quotaText = "";
+				quotaProvider = undefined;
+				requestFooterRender?.();
+			}
+			return;
+		}
+		const now = Date.now();
+		// A provider switch invalidates the cache: refetch immediately.
+		if (quotaProvider === provider && (now < quotaFreshUntil || quotaFetching)) return;
+		const label = QUOTA_PROVIDERS[provider].label;
+		// The sequence token guards the finally-block: when the provider
+		// switches mid-fetch, the superseded request must not clear the
+		// in-flight flag of its replacement.
+		const seq = ++quotaFetchSeq;
+		const fetching = (async () => {
+			try {
+				const value = await fetchQuota(provider, ctx.modelRegistry);
+				// The provider or its auth may have changed while the request
+				// was in flight; an API-key model switch also retires the quota.
+				if (
+					resolveQuotaProvider(ctx.model?.provider) !== provider ||
+					!ctx.model ||
+					!(ctx.modelRegistry.isUsingOAuth(ctx.model) ?? false)
+				) {
+					return;
+				}
+				quotaText = formatQuotaText(label, value);
+				quotaProvider = provider;
+				quotaFreshUntil = Date.now() + QUOTA_CACHE_MS;
+			} catch (error) {
+				if (resolveQuotaProvider(ctx.model?.provider) !== provider) return;
+				const code = error instanceof QuotaError ? error.code : "fetch";
+				quotaText = `${label}: <err:${code}>`;
+			} finally {
+				if (seq === quotaFetchSeq) quotaFetching = undefined;
+				requestFooterRender?.();
+			}
+		})();
+		quotaFetching = fetching;
+	};
+
 	const refreshBalance = (ctx: ExtensionContext): void => {
 		const provider = resolveBalanceProvider(ctx.model?.provider);
 		if (!provider) {
@@ -236,12 +306,15 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 	pi.on("model_select", (_event, ctx) => {
 		requestRender();
 		refreshBalance(ctx);
+		refreshQuota(ctx);
 	});
 	pi.on("thinking_level_select", requestRender);
 
-	// Like pi-deepseek-usage, refresh the account balance after each turn.
+	// Like pi-deepseek-usage, refresh the account balance after each turn;
+	// the provider quota status refreshes on the same cadence.
 	pi.on("turn_end", (_event, ctx) => {
 		refreshBalance(ctx);
+		refreshQuota(ctx);
 	});
 
 	const invalidateUsageCache = () => {
@@ -272,6 +345,10 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 		balanceProvider = undefined;
 		balanceFreshUntil = 0;
 		balanceFetching = undefined;
+		quotaText = "";
+		quotaProvider = undefined;
+		quotaFreshUntil = 0;
+		quotaFetching = undefined;
 		if (ctx.mode !== "tui") return;
 
 		const configuration = resolveFooterConfiguration(ctx);
@@ -310,6 +387,7 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 							balanceText,
 							balanceValue,
 							balanceProvider,
+							quotaText,
 						},
 					);
 					return renderTemplate(footerTemplate, fields, width, theme);
@@ -322,6 +400,7 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 		});
 		customFooterInstalled = true;
 		refreshBalance(ctx);
+		refreshQuota(ctx);
 	});
 
 	pi.on("session_shutdown", (_event, ctx) => {
@@ -338,6 +417,10 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 		balanceProvider = undefined;
 		balanceFreshUntil = 0;
 		balanceFetching = undefined;
+		quotaText = "";
+		quotaProvider = undefined;
+		quotaFreshUntil = 0;
+		quotaFetching = undefined;
 	});
 
 	pi.registerCommand("set-currency", {
