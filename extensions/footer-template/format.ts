@@ -131,7 +131,17 @@ export function getFieldValues(
 	const model = ctx.model;
 	const contextUsage = ctx.getContextUsage();
 	const contextWindow = contextUsage?.contextWindow ?? model?.contextWindow ?? 0;
-	const percent = contextUsage?.percent === null ? "?" : (contextUsage?.percent ?? 0).toFixed(1);
+	const rawPercent = contextUsage?.percent;
+	const percent = rawPercent === null ? "?" : (rawPercent ?? 0).toFixed(1);
+	// The absolute token count behind the usage percentage (the exact
+	// estimateContextTokens result, not derived from the rounded percent);
+	// carries its own decorations like {gitBranch}/{sessionName}, and is empty
+	// when the estimate is unknown (or no model context is available).
+	const contextUsageTokens = contextUsage?.tokens;
+	const contextTokens =
+		contextUsageTokens === null || contextUsageTokens === undefined
+			? ""
+			: ` (${formatCount(contextUsageTokens)})`;
 	const usingSubscription = model?.provider === "kimi-coding";
 	const branch = footerData.getGitBranch();
 	const sessionName = ctx.sessionManager.getSessionName();
@@ -149,6 +159,7 @@ export function getFieldValues(
 		contextWindow: formatTokens(contextWindow),
 		tokenStats,
 		contextUsage: `${percent}%/${formatTokens(contextWindow)}${autoCompactionEnabled ? " (auto)" : ""}`,
+		contextTokens,
 		modelInfo: formatModelInfo(ctx, footerData),
 		extensionStatuses: formatExtensionStatuses(footerData),
 		xp: process.env.PI_EXPERIMENTAL === "1" ? " • xp" : "",
@@ -158,7 +169,7 @@ export function getFieldValues(
 /** The default footer template, mirroring pi's built-in footer layout. */
 export const DEFAULT_FOOTER_TEMPLATE =
 	"{cwd}{gitBranch}{sessionName}\n" +
-	"{tokenStats} {contextUsage}{xp}{modelInfo:right}\n" +
+	"{tokenStats} {contextUsage}{contextTokens}{xp}{modelInfo:right}\n" +
 	"{extensionStatuses}";
 
 /** The notification format used when no custom template is configured. */

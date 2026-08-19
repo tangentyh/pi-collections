@@ -11,19 +11,23 @@ trusted) or global settings. Project settings take precedence:
 ```json
 {
   "footerTemplate": {
-    "template": "{cwd}{gitBranch}{sessionName}\n{tokenStats} {contextUsage}{xp}{modelInfo:right}\n{extensionStatuses}",
+    "template": "{cwd}{gitBranch}{sessionName}\n{tokenStats} {contextUsage}{contextTokens}{xp}{modelInfo:right}\n{extensionStatuses}",
     "notificationTemplate": "{time} ({elapsedTime} elapsed/{idleTime} idle) — {tokensPerSecond} tok/s, ${cost}, {output} out, {input} in, cache r/w {cacheRead}/{cacheWrite}, {totalTokens} total"
   }
 }
 ```
 
-The default template mirrors the layout of pi's built-in footer:
+The default template mirrors the layout of pi's built-in footer, with the
+absolute context-usage token count appended after `{contextUsage}`:
 
 ```text
 {cwd}{gitBranch}{sessionName}
-{tokenStats} {contextUsage}{xp}{modelInfo:right}
+{tokenStats} {contextUsage}{contextTokens}{xp}{modelInfo:right}
 {extensionStatuses}
 ```
+
+So the stats line shows e.g. `12.3%/200k (24,680)` — the percentage, the
+context window, and the absolute number of tokens currently used.
 
 `{gitBranch}`, `{sessionName}`, and `{xp}` carry their leading separators (see
 the field table below), and the `:right` modifier pushes a field to the right
@@ -68,6 +72,7 @@ These fields provide the values shown by pi's built-in footer:
 | `{contextWindow}` | Context-window size in pi's compact token format |
 | `{tokenStats}` | Cumulative input/output/cache/cost statistics |
 | `{contextUsage}` | `{percent}%/{contextWindow}`, with `(auto)` when auto-compaction is enabled |
+| `{contextTokens}` | ` (24,680)` — absolute number of context tokens currently used, with a leading space and parentheses; empty when the usage percentage is unknown or no model context is available |
 | `{modelInfo}` | Model name, thinking level, and provider when multiple providers are available |
 | `{extensionStatuses}` | Persistent extension statuses, sorted and joined on one line |
 | `{xp}` | ` • xp` when `PI_EXPERIMENTAL=1`, otherwise empty |
@@ -145,7 +150,8 @@ The built-in footer renders two lines, plus an optional extension-status line:
 
 The third line appears only when extension statuses exist. The model
 information is right-aligned and may include the provider when multiple
-providers are available. The default template above renders this same layout.
+providers are available. The default template above renders this same layout,
+plus the absolute context-usage token count appended after `{contextUsage}`.
 The built-in footer also handles width-aware truncation and context-usage
 coloring; a custom template controls its own spacing and styling.
 
