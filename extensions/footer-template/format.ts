@@ -156,6 +156,9 @@ export function getFieldValues(
 		sessionName: sessionName ? ` • ${sessionName}` : "",
 		latestCacheHitRate: latestCacheHitRate === undefined ? "" : latestCacheHitRate.toFixed(1),
 		cost: totals.cost.toFixed(3),
+		// Overrides the run-stats totalTokens: in footer templates {totalTokens}
+		// is the cumulative session total, so it can sit next to {tokenStats}.
+		totalTokens: formatCount(totals.totalTokens),
 		percent,
 		contextWindow: formatTokens(contextWindow),
 		tokenStats,
@@ -168,10 +171,10 @@ export function getFieldValues(
 	};
 }
 
-/** The default footer template, mirroring pi's built-in footer layout. */
+/** The default footer template, mirroring pi's built-in footer layout plus the cumulative total-token count. */
 export const DEFAULT_FOOTER_TEMPLATE =
 	"{cwd}{gitBranch}{sessionName}\n" +
-	"{tokenStats} {contextUsage}{contextTokens}{xp}{modelInfo:right}\n" +
+	"{tokenStats} ({totalTokens} total) {contextUsage}{contextTokens}{xp}{modelInfo:right}\n" +
 	"{extensionStatuses}";
 
 /** The notification format used when no custom template is configured. */

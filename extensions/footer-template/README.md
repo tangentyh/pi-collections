@@ -12,7 +12,7 @@ trusted) or global settings. Project settings take precedence:
 ```json
 {
   "footerTemplate": {
-    "template": "{cwd}{gitBranch}{sessionName}\n{tokenStats} {contextUsage}{contextTokens}{xp}{modelInfo:right}\n{extensionStatuses}",
+    "template": "{cwd}{gitBranch}{sessionName}\n{tokenStats} ({totalTokens} total) {contextUsage}{contextTokens}{xp}{modelInfo:right}\n{extensionStatuses}",
     "notificationTemplate": "{time} ({elapsedTime} elapsed/{idleTime} idle) — {tokensPerSecond} tok/s, ${cost}, {output} out, {input} in, cache r/w {cacheRead}/{cacheWrite}, {totalTokens} total"
   }
 }
@@ -20,16 +20,19 @@ trusted) or global settings. Project settings take precedence:
 
 The default template — used when no template is configured — mirrors the
 layout of pi's built-in footer, with the absolute context-usage token count
-appended after `{contextUsage}`:
+appended after `{contextUsage}` and the cumulative total-token count right
+after `{tokenStats}`:
 
 ```text
 {cwd}{gitBranch}{sessionName}
-{tokenStats} {contextUsage}{contextTokens}{xp}{modelInfo:right}
+{tokenStats} ({totalTokens} total) {contextUsage}{contextTokens}{xp}{modelInfo:right}
 {extensionStatuses}
 ```
 
 So the stats line shows e.g. `12.3%/200k (24,680)` — the percentage, the
-context window, and the absolute number of tokens currently used.
+context window, and the absolute number of tokens currently used — and
+`(68,234 total)` right after the token statistics, the cumulative total
+tokens used across the session.
 
 `{gitBranch}`, `{sessionName}`, and `{xp}` carry their leading separators (see
 the field table below), and the `:right` modifier pushes a field to the right
@@ -56,7 +59,7 @@ both sides are objects their keys merge, so a project that only sets
 is defined, just as an empty `template` disables the custom footer. When no
 template is configured, the extension applies its default template, which
 mirrors pi's built-in footer layout plus the absolute context-usage token
-count (shown above). An empty or whitespace-only template disables the custom
+count and the cumulative total-token count (shown above). An empty or whitespace-only template disables the custom
 footer, so pi's built-in footer remains active. Reload pi after changing the
 setting.
 
@@ -77,6 +80,7 @@ These fields provide the values shown by pi's built-in footer:
 | `{percent}` | Current context usage percentage, formatted to one decimal place, or `?` |
 | `{contextWindow}` | Context-window size in pi's compact token format |
 | `{tokenStats}` | Cumulative input/output/cache/cost statistics |
+| `{totalTokens}` | Cumulative total tokens used across the session (assistant messages, tool results, and compaction/branch-summary generation), as an exact count, e.g. `68,234` |
 | `{contextUsage}` | `{percent}%/{contextWindow}`, with `(auto)` when auto-compaction is enabled |
 | `{contextTokens}` | ` (24,680)` — absolute number of context tokens currently used, with a leading space and parentheses; empty when the usage percentage is unknown or no model context is available |
 | `{modelInfo}` | Model name, thinking level, and provider when multiple providers are available |
@@ -115,7 +119,9 @@ are left unchanged. Like the footer template, an empty or whitespace-only
 the default format is used.
 
 The following fields are also available in templates and describe the most
-recent completed run:
+recent completed run (in footer templates, `{totalTokens}` and `{cost}`
+instead reflect the cumulative session totals, so they can sit next to the
+cumulative `{tokenStats}`):
 
 - `{tokensPerSecond}` — output tokens divided by elapsed time, formatted to one decimal place
 - `{output}` — output-token count
@@ -180,8 +186,9 @@ The built-in footer renders two lines, plus an optional extension-status line:
 
 The third line appears only when extension statuses exist. The model
 information is right-aligned and may include the provider when multiple
-providers are available. The default template above renders this same layout,
-plus the absolute context-usage token count appended after `{contextUsage}`.
+providers are available. The default template above renders this same layout, plus the absolute
+context-usage token count appended after `{contextUsage}` and the cumulative
+total-token count right after `{tokenStats}`.
 The built-in footer also handles width-aware truncation and context-usage
 coloring; a custom template controls its own spacing and styling.
 
