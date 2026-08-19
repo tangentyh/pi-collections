@@ -50,11 +50,14 @@ the object form. Settings are read from `.pi/settings.json` and
 `footerTemplate` shadows the global one entirely (an empty string in the
 project disables the template even when global settings define one), and when
 both sides are objects their keys merge, so a project that only sets
-`notificationTemplate` keeps a global `template`. When no template is
-configured, the extension applies its default template, which mirrors pi's
-built-in footer layout plus the absolute context-usage token count (shown
-above). An empty or whitespace-only template disables the custom footer, so
-pi's built-in footer remains active. Reload pi after changing the setting.
+`notificationTemplate` keeps a global `template`; an empty
+`notificationTemplate` then disables the notification even when a global one
+is defined, just as an empty `template` disables the custom footer. When no
+template is configured, the extension applies its default template, which
+mirrors pi's built-in footer layout plus the absolute context-usage token
+count (shown above). An empty or whitespace-only template disables the custom
+footer, so pi's built-in footer remains active. Reload pi after changing the
+setting.
 
 Unknown placeholders are left unchanged. Each rendered line is truncated to
 the terminal width, like pi's built-in footer.
@@ -105,8 +108,9 @@ settings object; without it, this default format is used:
 
 Unlike the footer, the notification is rendered from the run-stats fields only
 (it fires before the footer data provider is available). Unknown placeholders
-are left unchanged, and an empty or whitespace-only template falls back to the
-default format.
+are left unchanged. Like the footer template, an empty or whitespace-only
+`notificationTemplate` disables the notification entirely; without the key,
+the default format is used.
 
 The following fields are also available in templates and describe the most
 recent completed run:
@@ -217,4 +221,5 @@ automatically.
 - Footer values are recalculated on render, so model, session, git, context,
   and extension-status changes are reflected without restarting pi.
 - The throughput notification fires after every output-producing run,
-  independently of the footer template.
+  independently of the footer template; an explicitly empty
+  `notificationTemplate` disables it.

@@ -147,6 +147,9 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 
 		if (!ctx.hasUI) return;
 		const configuration = resolveFooterConfiguration(ctx);
+		// Like the footer template, an explicit empty notification template
+		// opts out; only an unset one falls back to the default format.
+		if (configuration.notificationTemplate === "") return;
 		ctx.ui.notify(renderRunNotification(configuration.notificationTemplate, nextRunStats), "info");
 	});
 

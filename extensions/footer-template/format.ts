@@ -176,7 +176,7 @@ export const DEFAULT_FOOTER_TEMPLATE =
 export const DEFAULT_RUN_NOTIFICATION_TEMPLATE =
 	"{time} ({elapsedTime} elapsed/{idleTime} idle) — {tokensPerSecond} tok/s, ${cost}, {output} out, {input} in, cache r/w {cacheRead}/{cacheWrite}, {totalTokens} total";
 
-/** Render the per-message throughput notification; undefined or empty falls back to the default format. */
+/** Render the per-message throughput notification; an unset template falls back to the default format. */
 export function renderRunNotification(template: string | undefined, stats: RunStats): string {
 	return expandTemplate(template?.trim() || DEFAULT_RUN_NOTIFICATION_TEMPLATE, getRunStatsFields(stats));
 }

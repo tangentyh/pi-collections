@@ -16,7 +16,11 @@ export interface FooterConfiguration {
 	 * its built-in-shaped default), or "" to leave pi's built-in footer in place.
 	 */
 	template: string | undefined;
-	/** Per-message throughput notification template, or undefined for the built-in format. */
+	/**
+	 * Per-message throughput notification template: undefined when not
+	 * configured (the extension then uses its default format), or "" to
+	 * disable the notification entirely.
+	 */
 	notificationTemplate: string | undefined;
 	autoCompactionEnabled: boolean;
 }
@@ -61,10 +65,6 @@ function mergeSettings(
 	return result;
 }
 
-function nonEmpty(value: string | undefined): string | undefined {
-	return value !== undefined && value.trim() !== "" ? value : undefined;
-}
-
 /**
  * The configured footer template. Undefined when no template is configured,
  * so the extension falls back to its built-in-shaped default. An empty or
@@ -80,11 +80,16 @@ function getFooterTemplate(settings: SettingsObject): string | undefined {
 	return undefined;
 }
 
-/** The per-message notification template, only available in object form. */
+/**
+ * The per-message notification template, only available in object form.
+ * Undefined when not configured, so the extension uses its default format.
+ * An empty or whitespace-only template is returned as "" and disables the
+ * notification, matching the footer template's opt-out behavior.
+ */
 function getNotificationTemplate(settings: SettingsObject): string | undefined {
 	const value = settings.footerTemplate;
 	if (!isRecord(value) || typeof value.notificationTemplate !== "string") return undefined;
-	return nonEmpty(value.notificationTemplate);
+	return value.notificationTemplate.trim() === "" ? "" : value.notificationTemplate;
 }
 
 function getCompactionEnabled(settings: SettingsObject): boolean | undefined {
