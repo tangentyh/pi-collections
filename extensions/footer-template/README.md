@@ -1,8 +1,15 @@
 # pi-footer-template
 
-Render pi's footer from a configurable string template.
+Render pi's footer from a configurable string template and report response
+throughput after each agent run.
 
 > **Scaffold:** footer rendering and configuration resolution are not implemented yet.
+
+## Response throughput
+
+After an agent run that produces output, the extension shows a notification with
+output tokens per second and the input, output, cache, total-token, and
+elapsed-time figures from the run.
 
 ## Install
 
