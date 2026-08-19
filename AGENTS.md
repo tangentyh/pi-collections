@@ -25,6 +25,8 @@ Currently in the collection:
   blinking cursor when focused; border dims when the terminal loses focus
 - `scroll-speed/` → npm `pi-scroll-speed` — lines scrolled per mouse-wheel notch in pi
   fullscreen mode
+- `footer-template/` → npm `pi-footer-template` — render pi's footer from a configurable
+  string template
 
 Keep this list in sync with the table in `README.md` (same order, names, descriptions).
 When adding an extension, add it to both.
