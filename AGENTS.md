@@ -31,6 +31,10 @@ Currently in the collection:
   reported in a notification configured the same way; multi-provider account balance
   mirrors pi-tidy-footer, plus provider quota status for Codex/Claude OAuth subscriptions
   mirrors pi-usage/pi-fancy-footer
+- `deepseek-pricing-by-time/` → npm `pi-deepseek-pricing-by-time` — time-of-day-aware DeepSeek
+  cost accounting: re-prices every DeepSeek assistant message at `message_end` with the
+  official peak/off-peak rates in effect at the message's UTC timestamp, so session
+  totals, the footer, the statusline cost segment, and exports match what DeepSeek bills
 
 Keep this list here in `AGENTS.md` in sync with the table in `README.md` (same order, names, descriptions).
 When adding an extension, add it to both.

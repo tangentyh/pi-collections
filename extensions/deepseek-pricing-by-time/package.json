@@ -1,0 +1,34 @@
+{
+  "name": "pi-deepseek-pricing-by-time",
+  "version": "0.1.0",
+  "description": "Time-of-day-aware DeepSeek cost accounting for pi: re-prices every DeepSeek assistant message with the official peak/off-peak rates in effect at the message's own UTC timestamp, so session totals, the footer, the statusline cost segment, and exports match what DeepSeek actually bills",
+  "keywords": ["pi-package", "pi-extension", "deepseek", "pricing", "cost"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tangentyh/pi-collections.git",
+    "directory": "extensions/deepseek-pricing-by-time"
+  },
+  "homepage": "https://github.com/tangentyh/pi-collections/tree/main/extensions/deepseek-pricing-by-time",
+  "type": "module",
+  "pi": {
+    "extensions": ["./deepseek-pricing-by-time.ts"]
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p ../..",
+    "prepublishOnly": "npm run typecheck"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^0.84.1",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0"
+  },
+  "files": [
+    "deepseek-pricing-by-time.ts",
+    "README.md",
+    "LICENSE"
+  ]
+}

@@ -13,7 +13,8 @@
     "typecheck": "tsc --noEmit",
     "start:scroll-speed": "pi -e ./extensions/scroll-speed/scroll-speed.ts",
     "start:cursor": "pi -e ./extensions/focus-aware-blinking-cursor-and-border/focus-aware-blinking-cursor-and-border.ts",
-    "start:footer-template": "pi -e ./extensions/footer-template/footer-template.ts"
+    "start:footer-template": "pi -e ./extensions/footer-template/footer-template.ts",
+    "start:deepseek-pricing-by-time": "pi -e ./extensions/deepseek-pricing-by-time/deepseek-pricing-by-time.ts"
   },
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "^0.84.1",
