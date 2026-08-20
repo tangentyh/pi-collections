@@ -4,13 +4,15 @@
  *
  * Ported from pi-fancy-footer's provider-status widget and pi-usage: the
  * OAuth subscription providers (OpenAI Codex, Anthropic) report rolling quota
- * windows on their usage endpoints, rendered as `<Label>: 5h:23% used
- * 7d:41% used` — window length plus used percentage — with a reset countdown
- * appended to windows at or above 75% used, and the Codex credit balance when
- * the account reports one. Auth goes through pi's model registry like the
- * account balance: for these providers `getApiKeyForProvider` resolves the
- * OAuth access token, with pi-managed token refresh and the same sandbox-aware
- * proxy handling.
+ * windows on their usage endpoints. The default template renders them from
+ * the structured breakdown fields ({quota5hUsed}, {quota5hRemaining}, ...);
+ * the compact status text (`<Label>: 5h:23% used 7d:41% used` — window
+ * length plus used percentage, with a reset countdown appended to windows at
+ * or above 75% used, and the Codex credit balance when the account reports
+ * one) backs `{balanceStatus}` only for errors and `No quota`. Auth goes
+ * through pi's model registry like the account balance: for these providers
+ * `getApiKeyForProvider` resolves the OAuth access token, with pi-managed
+ * token refresh and the same sandbox-aware proxy handling.
  */
 
 import type { ModelRegistry } from "@earendil-works/pi-coding-agent";

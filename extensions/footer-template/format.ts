@@ -105,8 +105,9 @@ export function getRunStatsFields(
  * possible (no cached rate for a non-USD display currency), the balance
  * falls back to its native currency formatting (`fallback`). The amount is
  * always shown with two decimals, keeping the documented format. OAuth quota
- * providers use an explicit compact status such as `5h:23% used 7d:41% used`;
- * structured quota fields are provided separately below.
+ * providers (Codex, Claude) have no monetary balance; their quota status is
+ * rendered from the structured breakdown fields below, while `{balanceStatus}`
+ * only carries their error or `No quota` text.
  */
 function formatBalanceField(
 	label: string,
@@ -164,8 +165,9 @@ export interface FooterFieldOptions {
 	 * Provider quota status for OAuth subscription providers (Codex, Claude):
 	 * "", "<Label>: 5h:23% used 7d:41% used", or "<Label>: <err:...>".
 	 * Non-empty only while the active model's provider reports quota windows;
-	 * it takes precedence over the monetary balance in
-	 * `{balanceLabel}/{balanceStatus}`.
+	 * it takes precedence over the monetary balance in `{balanceLabel}`.
+	 * While quota data is available, `{balanceStatus}` stays empty and the
+	 * breakdown fields render the windows instead.
 	 */
 	quotaText: string;
 	/** The structured quota data behind the explicit quota template fields. */
@@ -201,8 +203,8 @@ export function getFieldValues(
 	// over the monetary balance. OAuth subscription providers (Codex, Claude)
 	// have no monetary balance; their quota status replaces the balance value
 	// for them. The label is only exposed while a status exists, so the
-	// template's `[{balanceLabel}: {balanceStatus}]` section disappears
-	// entirely when there is nothing to show.
+	// template's `[{balanceLabel}: ...]` section disappears entirely when
+	// there is nothing to show.
 	const balanceProviderLabel = options.balanceProvider
 		? (BALANCE_PROVIDERS[options.balanceProvider]?.label ?? options.balanceProvider)
 		: "";
@@ -223,11 +225,17 @@ export function getFieldValues(
 	const balanceLabel = compositeBalance
 		? (options.quotaText ? quotaProviderLabel : balanceProviderLabel)
 		: "";
-	const balanceStatus = compositeBalance
-		? compositeBalance.startsWith(`${balanceLabel}: `)
-			? compositeBalance.slice(balanceLabel.length + 2)
-			: compositeBalance
-		: "";
+	// The structured breakdown fields render the healthy quota status in the
+	// default template, so {balanceStatus} stays empty while quota data is
+	// available; only the error/`No quota` text (there is no data to break
+	// down) and the monetary balance render through it.
+	const quotaBreakdownShown = !!options.quotaText && !!options.quotaValue;
+	const balanceStatus =
+		compositeBalance && !quotaBreakdownShown
+			? compositeBalance.startsWith(`${balanceLabel}: `)
+				? compositeBalance.slice(balanceLabel.length + 2)
+				: compositeBalance
+			: "";
 	const quotaFields = getQuotaTemplateFields(options.quotaValue);
 
 	return {
@@ -273,9 +281,9 @@ export function getFieldValues(
 	};
 }
 
-/** The default footer template, mirroring pi's built-in footer layout plus the cumulative total-token count and the right-aligned account balance. */
+/** The default footer template, mirroring pi's built-in footer layout plus the cumulative total-token count and the right-aligned account balance / quota-window breakdown. */
 export const DEFAULT_FOOTER_TEMPLATE =
-	"{cwd}[ ({gitBranch})][ • {sessionName}][{balanceLabel}: {balanceStatus}]:right\n" +
+	"{cwd}[ ({gitBranch})][ • {sessionName}][{balanceLabel}: {balanceStatus}]:right[ 5h {quota5hUsed} used ({quota5hRemaining} left)][ 7d {quota7dUsed} used ({quota7dRemaining} left)][ credits: {creditsRemaining} left]\n" +
 	"[↑{sessionInput}][ ↓{sessionOutput}][ R{sessionCacheRead}][ W{sessionCacheWrite}][ CH{latestCacheHitRate}%][ {cost} {subscription}] Σ{totalTokens} {percent}%/{contextWindow}[={contextTokens}][ {autoCompaction}][ • {xp}][ {modelProvider} {modelName} {thinkingLevel}]:right\n" +
 	"{extensionStatuses}";
 

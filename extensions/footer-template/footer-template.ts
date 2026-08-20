@@ -154,8 +154,11 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 	// for the OAuth
 	// subscription providers (openai-codex, anthropic), mirroring
 	// pi-fancy-footer's provider-status widget and pi-usage: the rolling quota
-	// windows render as `<Label>: 5h:23% used 7d:41% used` with a reset countdown for
-	// windows at or above 75% used. Quota is only fetched while the active
+	// windows render as `<Label>: 5h:23% used 7d:41% used` (compact status) with
+	// a reset countdown for windows at or above 75% used; the default template
+	// renders the structured breakdown fields ({quota5hUsed}, {quota7dUsed},
+	// {creditsRemaining}, ...) instead, with {balanceStatus} empty while quota
+	// data is available. Quota is only fetched while the active
 	// model uses OAuth (API-key models have no subscription quota). Refreshed
 	// at most once per cache window (3 min, like pi-usage) on the same events
 	// as the balance; fetch errors are not cached and render as
