@@ -60,14 +60,9 @@ function reprice(usage: Usage, rates: DeepSeekRates): Usage["cost"] {
 	return cost;
 }
 
-/** message_end replacement with the given rates applied to the message's usage. */
-function withCost(message: AssistantMessage, rates: DeepSeekRates): { message: AssistantMessage } {
-	return {
-		message: {
-			...message,
-			usage: { ...message.usage, cost: reprice(message.usage, rates) },
-		},
-	};
+/** Immutably re-price a message's usage at the given rates. */
+function withCost(message: AssistantMessage, rates: DeepSeekRates): AssistantMessage {
+	return { ...message, usage: { ...message.usage, cost: reprice(message.usage, rates) } };
 }
 
 function isDeepSeekAssistant(message: unknown): message is AssistantMessage {
@@ -86,7 +81,7 @@ export default function (pi: ExtensionAPI) {
 		const rates = RATES[message.responseModel ?? message.model];
 		if (!rates) return;
 
-		return withCost(message, rates[tierAt(new Date(message.timestamp ?? Date.now()))]);
+		return { message: withCost(message, rates[tierAt(new Date(message.timestamp ?? Date.now()))]) };
 	});
 
 	// Surface the currently active tier in the footer status area, updating only
