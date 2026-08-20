@@ -19,8 +19,8 @@ the statusline `cost` segment, `/usage`, exports — matches what DeepSeek bills
 - pi's session totals are the sum of per-message `usage.cost.total`, so the corrected
   values flow into every cost display automatically — no other state to sync.
 - Also registers the `/deepseek-tier` command to show which tier is active right now,
-  and sets a footer status (`deepseek: peak/off-peak rates`) that only updates when
-  the tier flips.
+  and sets a footer status (`peak ⚠️`/`off-peak`) that only updates when the tier
+  flips (disableable, see [Configuration](#configuration)).
 
 ## Official rate schedule (as of 2026)
 
@@ -48,13 +48,37 @@ pi install ./extensions/deepseek-pricing-by-time
 
 ## Usage
 
-Nothing to configure. When a DeepSeek response completes, its cost is re-priced at the
-tier in effect for that message's timestamp:
+When a DeepSeek response completes, its cost is re-priced at the tier in effect for
+that message's timestamp:
 
 - `message_end` corrects the stored per-message cost before it is summed into session
   totals, so the footer/statusline `cost` segment is accurate in real time.
 - `/deepseek-tier` reports the currently active tier and its rates (useful for deciding
   when to run a batch).
+
+## Configuration
+
+The footer tier status is on by default. It can be disabled from project settings
+(when the project is trusted) or global settings, with project settings taking
+precedence:
+
+```json
+{
+  "deepseekPricingByTime": false
+}
+```
+
+or the object form:
+
+```json
+{
+  "deepseekPricingByTime": {
+    "showTierStatus": false
+  }
+}
+```
+
+Cost re-pricing itself is always on; only the footer status indicator is affected.
 
 ### Optionally: keep `models.json` as the fallback
 

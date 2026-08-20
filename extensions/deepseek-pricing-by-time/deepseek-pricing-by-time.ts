@@ -1,8 +1,12 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { AssistantMessage, Usage } from "@earendil-works/pi-ai";
-import type {
-	ExtensionAPI,
-	ExtensionContext,
-	MessageEndEvent,
+import {
+	CONFIG_DIR_NAME,
+	getAgentDir,
+	type ExtensionAPI,
+	type ExtensionContext,
+	type MessageEndEvent,
 } from "@earendil-works/pi-coding-agent";
 
 // DeepSeek official USD pricing (https://api-docs.deepseek.com/quick_start/pricing)
@@ -71,6 +75,38 @@ function isDeepSeekAssistant(message: unknown): message is AssistantMessage {
 	return m.role === "assistant" && m.provider === "deepseek";
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * The `deepseekPricingByTime` setting: a boolean, or `{ showTierStatus: boolean }`.
+ * Returns undefined when unset, so the tier status stays enabled by default.
+ * Project settings take precedence over global ones.
+ */
+function configuredShowTierStatus(ctx: ExtensionContext): boolean | undefined {
+	const files = [
+		ctx.isProjectTrusted() ? join(ctx.cwd, CONFIG_DIR_NAME, "settings.json") : undefined,
+		join(getAgentDir(), "settings.json"),
+	];
+	for (const file of files) {
+		if (!file) continue;
+		let settings: unknown;
+		try {
+			settings = JSON.parse(readFileSync(file, "utf8"));
+		} catch {
+			continue; // missing or invalid settings file: try the next one
+		}
+		if (!isRecord(settings)) continue;
+		const value = settings.deepseekPricingByTime;
+		if (typeof value === "boolean") return value;
+		if (isRecord(value) && typeof value.showTierStatus === "boolean") {
+			return value.showTierStatus;
+		}
+	}
+	return undefined;
+}
+
 export default function (pi: ExtensionAPI) {
 	// Re-price every DeepSeek assistant message with the rate tier in effect at
 	// the message's own timestamp. Session totals, footer, statusline and exports
@@ -85,16 +121,19 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	// Surface the currently active tier in the footer status area, updating only
-	// when the tier actually flips.
-	let lastTier: Tier | undefined;
+	// when the tier flips. Disabled via the `deepseekPricingByTime` setting, in
+	// which case the status is cleared.
+	let lastStatus: string | undefined;
 	const refreshStatus = (ctx: ExtensionContext) => {
-		const tier = tierAt(new Date());
-		if (tier === lastTier) return;
-		lastTier = tier;
-		ctx.ui.setStatus(
-			"deepseek-tier",
-			tier === "peak" ? "deepseek: peak rates ⚠️" : "deepseek: off-peak rates",
-		);
+		const status =
+			configuredShowTierStatus(ctx) ?? true
+				? tierAt(new Date()) === "peak"
+					? "peak ⚠️"
+					: "off-peak"
+				: undefined;
+		if (status === lastStatus) return;
+		lastStatus = status;
+		ctx.ui.setStatus("deepseek-tier", status);
 	};
 
 	pi.on("session_start", (_event, ctx) => refreshStatus(ctx));
