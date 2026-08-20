@@ -1,5 +1,5 @@
 /**
- * Provider quota status for the `{balance}` field.
+ * Provider quota status for the `{balanceLabel}/{balanceStatus}` fields.
  *
  * Ported from pi-fancy-footer's provider-status widget and pi-usage: the
  * OAuth subscription providers (OpenAI Codex, Anthropic) report rolling quota

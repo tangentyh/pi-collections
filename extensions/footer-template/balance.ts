@@ -1,5 +1,5 @@
 /**
- * Multi-provider account-balance field (`{balance}`).
+ * Multi-provider account-balance fields (`{balanceLabel}`/`{balanceStatus}`).
  *
  * Ported from https://github.com/eriiic7z/pi-tidy-footer: queries each
  * supported provider's balance endpoint (DeepSeek, Moonshot, OpenRouter,

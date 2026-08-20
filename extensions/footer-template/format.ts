@@ -7,12 +7,17 @@ import type {
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { BALANCE_PROVIDERS } from "./balance.js";
 import { CURRENCIES, ccyRate, formatCost } from "./currency.js";
+import { QUOTA_PROVIDERS } from "./quota.js";
 import type { RunStats, SessionUsage, UsageTotals } from "./types.js";
 
 const FIELD_PATTERN = /\{([A-Za-z][A-Za-z0-9_]*)(?::right)?\}/g;
 // Square-bracketed sections are omitted when all contained fields are empty.
-const OPTIONAL_GROUP_PATTERN = /\[([^\[\]\r\n]*)\]/g;
-const RIGHT_ALIGN_PATTERN = /\{([A-Za-z][A-Za-z0-9_]*):right\}/;
+// A group directly followed by ":right" is preserved so it can be located as
+// a single right-aligned unit (groups cannot nest).
+const OPTIONAL_GROUP_PATTERN = /\[([^\[\]\r\n]*)\](?!:right)/g;
+// A right-aligned unit: a {field} or an optional section [ ... ], each
+// followed by ":right".
+const RIGHT_ALIGN_PATTERN = /(?:\{([A-Za-z][A-Za-z0-9_]*)\}|\[([^\[\]\r\n]*)\]):right/;
 
 export function formatElapsedTime(elapsedSeconds: number): string {
 	const secondsValue = Number.isFinite(elapsedSeconds) ? Math.max(0, elapsedSeconds) : 0;
@@ -67,45 +72,6 @@ export function formatExtensionStatuses(footerData: ReadonlyFooterDataProvider):
 		.join(" ");
 }
 
-export function formatModelInfo(ctx: ExtensionContext, footerData: ReadonlyFooterDataProvider): string {
-	const model = ctx.model;
-	const modelName = model?.id || "no-model";
-	let modelInfo = modelName;
-
-	if (model?.reasoning) {
-		const thinkingLevel = ctx.thinkingLevel || "off";
-		modelInfo = thinkingLevel === "off" ? `${modelName} • thinking off` : `${modelName} • ${thinkingLevel}`;
-	}
-
-	if (footerData.getAvailableProviderCount() > 1 && model) {
-		modelInfo = `(${model.provider}) ${modelInfo}`;
-	}
-	return modelInfo;
-}
-
-export function formatTokenStats(
-	totals: UsageTotals,
-	latestCacheHitRate: number | undefined,
-	usingSubscription: boolean,
-	costCurrency: string,
-	fxRates: Record<string, number> | null,
-): string {
-	const tokenStats: string[] = [];
-	if (totals.input) tokenStats.push(`↑${formatTokens(totals.input)}`);
-	if (totals.output) tokenStats.push(`↓${formatTokens(totals.output)}`);
-	if (totals.cacheRead) tokenStats.push(`R${formatTokens(totals.cacheRead)}`);
-	if (totals.cacheWrite) tokenStats.push(`W${formatTokens(totals.cacheWrite)}`);
-	if ((totals.cacheRead > 0 || totals.cacheWrite > 0) && latestCacheHitRate !== undefined) {
-		tokenStats.push(`CH${latestCacheHitRate.toFixed(1)}%`);
-	}
-	if (totals.cost || usingSubscription) {
-		tokenStats.push(
-			`${formatCost(totals.cost, costCurrency, fxRates)}${usingSubscription ? " (sub)" : ""}`,
-		);
-	}
-	return tokenStats.join(" ");
-}
-
 /** Wall-clock time in 24-hour HH:MM:SS (local time). */
 export function formatTime(date: Date): string {
 	const pad = (value: number) => value.toString().padStart(2, "0");
@@ -133,7 +99,7 @@ export function getRunStatsFields(
 }
 
 /**
- * The `{balance}` value: the reported balance converted to the configured
+ * The `{balanceStatus}` value: the reported balance converted to the configured
  * display currency, e.g. `DeepSeek: €15.23`. When the conversion is not
  * possible (no cached rate for a non-USD display currency), the balance
  * falls back to its native currency formatting (`fallback`). The amount is
@@ -183,9 +149,9 @@ export interface FooterFieldOptions {
 	costCurrency: string;
 	/** The cached USD-based exchange-rate table, or null when unavailable. */
 	fxRates: Record<string, number> | null;
-	/** Whether auto-compaction is enabled (`(auto)` marker in {contextUsage}). */
+	/** Whether auto-compaction is enabled (`{autoCompaction}` marker). */
 	autoCompactionEnabled: boolean;
-	/** `{balance}` value: "", "<Label>: <err:...>", or "<Label>: No balance". */
+	/** `{balanceStatus}` value: "", "<err:...>", or "No balance". */
 	balanceText: string;
 	/** The numeric balance and its source currency, when available. */
 	balanceValue: { amount: number; currency: string } | undefined;
@@ -195,9 +161,11 @@ export interface FooterFieldOptions {
 	 * Provider quota status for OAuth subscription providers (Codex, Claude):
 	 * "", "<Label>: 5h:23% 7d:41%", or "<Label>: <err:...>". Non-empty only
 	 * while the active model's provider reports quota windows; it takes
-	 * precedence over the monetary balance in `{balance}`.
+	 * precedence over the monetary balance in `{balanceLabel}/{balanceStatus}`.
 	 */
 	quotaText: string;
+	/** The provider key the quota status belongs to (e.g. "openai-codex", "anthropic"). */
+	quotaProvider: string | undefined;
 }
 
 export function getFieldValues(
@@ -223,58 +191,84 @@ export function getFieldValues(
 	const branch = footerData.getGitBranch();
 	const sessionName = ctx.sessionManager.getSessionName();
 
-	const tokenStats = formatTokenStats(
-		totals,
-		latestCacheHitRate,
-		usingSubscription,
-		options.costCurrency,
-		options.fxRates,
-	);
-
-	// The `{balance}` field. OAuth subscription providers (Codex, Claude) have
-	// no monetary balance; their quota status replaces the balance value for
-	// them.
-	const balanceLabel = options.balanceProvider
+	// The composite balance text, e.g. `DeepSeek: $17.35`: quota status wins
+	// over the monetary balance. OAuth subscription providers (Codex, Claude)
+	// have no monetary balance; their quota status replaces the balance value
+	// for them. The label is only exposed while a status exists, so the
+	// template's `[{balanceLabel}: {balanceStatus}]` section disappears
+	// entirely when there is nothing to show.
+	const balanceProviderLabel = options.balanceProvider
 		? (BALANCE_PROVIDERS[options.balanceProvider]?.label ?? options.balanceProvider)
 		: "";
-	const balanceField = options.quotaText
+	const quotaProviderLabel = options.quotaProvider
+		? (QUOTA_PROVIDERS[options.quotaProvider]?.label ?? options.quotaProvider)
+		: "";
+	const compositeBalance = options.quotaText
 		? options.quotaText
-		: options.balanceValue && balanceLabel
+		: options.balanceValue && balanceProviderLabel
 			? formatBalanceField(
-					balanceLabel,
+					balanceProviderLabel,
 					options.balanceValue,
 					options.costCurrency,
 					options.fxRates,
 					options.balanceText,
 				)
 			: options.balanceText;
+	const balanceLabel = compositeBalance
+		? (options.quotaText ? quotaProviderLabel : balanceProviderLabel)
+		: "";
+	const balanceStatus = compositeBalance
+		? compositeBalance.startsWith(`${balanceLabel}: `)
+			? compositeBalance.slice(balanceLabel.length + 2)
+			: compositeBalance
+		: "";
 
 	return {
 		...getRunStatsFields(runStats, options.costCurrency, options.fxRates),
 		cwd: formatCwdForFooter(ctx.sessionManager.getCwd(), process.env.HOME || process.env.USERPROFILE),
 		gitBranch: branch || "",
 		sessionName: sessionName || "",
-		latestCacheHitRate: latestCacheHitRate === undefined ? "" : latestCacheHitRate.toFixed(1),
-		cost: formatCost(totals.cost, options.costCurrency, options.fxRates),
-		// Overrides the run-stats totalTokens: in footer templates {totalTokens}
-		// is the cumulative session total, so it can sit next to {tokenStats}.
+		// Like the built-in footer's CH marker: only while the session has any
+		// cache usage, and without the % sign (the template adds it).
+		latestCacheHitRate:
+			(totals.cacheRead > 0 || totals.cacheWrite > 0) && latestCacheHitRate !== undefined
+				? latestCacheHitRate.toFixed(1)
+				: "",
+		// Overrides the run-stats cost: in footer templates {cost} is the
+		// cumulative session total (empty while nothing was spent), so it can
+		// sit next to the session token fields.
+		cost: totals.cost > 0 ? formatCost(totals.cost, options.costCurrency, options.fxRates) : "",
+		// Overrides the run-stats totalTokens: cumulative session total, so it
+		// can sit next to the session token fields.
 		totalTokens: formatCount(totals.totalTokens),
+		sessionInput: totals.input > 0 ? formatTokens(totals.input) : "",
+		sessionOutput: totals.output > 0 ? formatTokens(totals.output) : "",
+		sessionCacheRead: totals.cacheRead > 0 ? formatTokens(totals.cacheRead) : "",
+		sessionCacheWrite: totals.cacheWrite > 0 ? formatTokens(totals.cacheWrite) : "",
+		subscription: usingSubscription ? "(sub)" : "",
 		percent,
 		contextWindow: formatTokens(contextWindow),
-		tokenStats,
-		contextUsage: `${percent}%/${formatTokens(contextWindow)}${options.autoCompactionEnabled ? " (auto)" : ""}`,
+		autoCompaction: options.autoCompactionEnabled ? "(auto)" : "",
 		contextTokens,
-		modelInfo: formatModelInfo(ctx, footerData),
+		modelName: model?.id || "no-model",
+		thinkingLevel: model?.reasoning
+			? (ctx.thinkingLevel || "off") === "off"
+				? "• thinking off"
+				: `• ${ctx.thinkingLevel}`
+			: "",
+		modelProvider:
+			footerData.getAvailableProviderCount() > 1 && model ? `(${model.provider})` : "",
 		extensionStatuses: formatExtensionStatuses(footerData),
-		balance: balanceField,
+		balanceLabel,
+		balanceStatus,
 		xp: process.env.PI_EXPERIMENTAL === "1" ? "xp" : "",
 	};
 }
 
 /** The default footer template, mirroring pi's built-in footer layout plus the cumulative total-token count and the right-aligned account balance. */
 export const DEFAULT_FOOTER_TEMPLATE =
-	"{cwd}[ ({gitBranch})][ • {sessionName}]{balance:right}\n" +
-	"{tokenStats} Σ{totalTokens} {contextUsage}[ ({contextTokens})][ • {xp}]{modelInfo:right}\n" +
+	"{cwd}[ ({gitBranch})][ • {sessionName}][{balanceLabel}: {balanceStatus}]:right\n" +
+	"[↑{sessionInput}][ ↓{sessionOutput}][ R{sessionCacheRead}][ W{sessionCacheWrite}][ CH{latestCacheHitRate}%][ {cost} {subscription}] Σ{totalTokens} {percent}%/{contextWindow}[ {autoCompaction}][ ({contextTokens})][ • {xp}][ {modelProvider} {modelName} {thinkingLevel}]:right\n" +
 	"{extensionStatuses}";
 
 /** The notification format used when no custom template is configured; `{cost}` carries its own currency symbol. */
@@ -310,32 +304,72 @@ function expandOptionalGroups(template: string, fields: Record<string, string>):
 }
 
 function expandTemplate(template: string, fields: Record<string, string>): string {
-	return expandOptionalGroups(template, fields).replace(FIELD_PATTERN, (placeholder, fieldName: string) => {
-		return Object.prototype.hasOwnProperty.call(fields, fieldName) ? fields[fieldName] || "" : placeholder;
-	});
+	const text = expandOptionalGroups(template, fields);
+	let result = "";
+	let cursor = 0;
+	for (const match of text.matchAll(FIELD_PATTERN)) {
+		const fieldStart = match.index;
+		const fieldEnd = fieldStart + match[0].length;
+		result += text.slice(cursor, fieldStart);
+		cursor = fieldEnd;
+		const fieldName = match[1];
+		if (!Object.prototype.hasOwnProperty.call(fields, fieldName)) {
+			// Unknown placeholders stay literal, like ordinary template text.
+			result += match[0];
+			continue;
+		}
+		const value = fields[fieldName];
+		if (value !== "") {
+			result += value;
+			continue;
+		}
+		// An empty field also removes one adjacent whitespace run (the one
+		// after it, else the one before it), so a kept optional section cannot
+		// leave stray separators around a dropped value.
+		const afterRun = /^\s+/.exec(text.slice(cursor));
+		if (afterRun) {
+			cursor += afterRun[0].length;
+			continue;
+		}
+		const beforeRun = /\s+$/.exec(result);
+		if (beforeRun) result = result.slice(0, beforeRun.index);
+	}
+	return result + text.slice(cursor);
 }
 
 /**
- * Expand one template line. A `{field:right}` placeholder splits the line into
- * a left part and a right part, so the field can be right-aligned on render.
+ * Expand one template line. A `:right` marker on a field or on an optional
+ * section splits the line into a left part and a right part, so the unit can
+ * be right-aligned on render.
  */
 function expandLine(
 	line: string,
 	fields: Record<string, string>,
 ): { text: string; right: { left: string; right: string } | undefined } {
-	// Resolve optional groups before looking for a right-aligned field. This
-	// also allows an optional group to contain a :right placeholder.
+	// Resolve optional groups before looking for a right-aligned unit. This
+	// also allows an optional group to contain a :right placeholder, while a
+	// group directly followed by :right is preserved by the lookahead and
+	// located here as a single unit, e.g. `[{balanceLabel}: {balanceStatus}]:right`.
 	const expandedOptionalGroups = expandOptionalGroups(line, fields);
 	const rightMatch = RIGHT_ALIGN_PATTERN.exec(expandedOptionalGroups);
-	if (!rightMatch || !Object.prototype.hasOwnProperty.call(fields, rightMatch[1])) {
+	if (!rightMatch) {
 		return { text: expandTemplate(expandedOptionalGroups, fields), right: undefined };
 	}
-	const left = expandTemplate(expandedOptionalGroups.slice(0, rightMatch.index), fields);
-	const right =
-		fields[rightMatch[1]] +
-		expandTemplate(expandedOptionalGroups.slice(rightMatch.index + rightMatch[0].length), fields);
-	// An empty right-aligned field (e.g. `{balance}` with no balance) leaves
-	// the line as its left part instead of padding it with trailing spaces.
+	// An unknown right-aligned field stays in place, like any placeholder.
+	if (rightMatch[1] !== undefined && !Object.prototype.hasOwnProperty.call(fields, rightMatch[1])) {
+		return { text: expandTemplate(expandedOptionalGroups, fields), right: undefined };
+	}
+	const unitStart = rightMatch.index;
+	const markerEnd = unitStart + rightMatch[0].length;
+	const unitEnd = markerEnd - ":right".length;
+	const left = expandTemplate(expandedOptionalGroups.slice(0, unitStart), fields);
+	const right = expandTemplate(
+		expandedOptionalGroups.slice(unitStart, unitEnd) + expandedOptionalGroups.slice(markerEnd),
+		fields,
+	);
+	// An empty right-aligned unit (e.g. `{balanceLabel}: {balanceStatus}` with
+	// no balance) leaves the line as its left part instead of padding it with
+	// trailing spaces.
 	return right === "" ? { text: left, right: undefined } : { text: left + right, right: { left, right } };
 }
 

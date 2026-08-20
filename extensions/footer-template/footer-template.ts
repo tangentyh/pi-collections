@@ -130,7 +130,8 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 	let requestFooterRender: (() => void) | undefined;
 	let customFooterInstalled = false;
 
-	// Account balance behind the {balance} field. Supported providers mirror
+	// Account balance behind the {balanceLabel}/{balanceStatus} fields.
+	// Supported providers mirror
 	// pi-tidy-footer:
 	// deepseek, moonshotai-cn, openrouter, siliconflow, zhipu. Refreshed at most
 	// once per cache window (mirroring pi-deepseek-usage's 30s cache), on
@@ -145,7 +146,8 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 	let balanceFetching: Promise<void> | undefined;
 	let balanceFetchSeq = 0;
 
-	// Provider quota status behind the {balance} field for the OAuth
+	// Provider quota status behind the {balanceLabel}/{balanceStatus} fields
+	// for the OAuth
 	// subscription providers (openai-codex, anthropic), mirroring
 	// pi-fancy-footer's provider-status widget and pi-usage: the rolling quota
 	// windows render as `<Label>: 5h:23% 7d:41%` with a reset countdown for
@@ -388,6 +390,7 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 							balanceValue,
 							balanceProvider,
 							quotaText,
+							quotaProvider,
 						},
 					);
 					return renderTemplate(footerTemplate, fields, width, theme);
