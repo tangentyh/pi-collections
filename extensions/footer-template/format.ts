@@ -283,7 +283,7 @@ export function getFieldValues(
 
 /** The default footer template, mirroring pi's built-in footer layout plus the cumulative total-token count and the right-aligned account balance / quota-window breakdown. */
 export const DEFAULT_FOOTER_TEMPLATE =
-	"{cwd}[ ({gitBranch})][ • {sessionName}][{balanceLabel}: {balanceStatus}]:right[ 5h {quota5hUsed} used ({quota5hRemaining} left)][ 7d {quota7dUsed} used ({quota7dRemaining} left)][ credits: {creditsRemaining} left]\n" +
+	"{cwd}[ ({gitBranch})][ • {sessionName}][{balanceLabel}: {balanceStatus}]:right[ 5h {quota5hUsed} used ({quota5hReset})][ 7d {quota7dUsed} used ({quota7dReset})][ credits: {creditsRemaining}]\n" +
 	"[↑{sessionInput}][ ↓{sessionOutput}][ R{sessionCacheRead}][ W{sessionCacheWrite}][ CH{latestCacheHitRate}%][ {cost} {subscription}] Σ{totalTokens} {percent}%/{contextWindow}[={contextTokens}][ {autoCompaction}][ • {xp}][ {modelProvider} {modelName} {thinkingLevel}]:right\n" +
 	"{extensionStatuses}";
 

@@ -12,7 +12,7 @@ trusted) or global settings. Project settings take precedence:
 ```json
 {
   "footerTemplate": {
-    "template": "{cwd}[ ({gitBranch})][ • {sessionName}][{balanceLabel}: {balanceStatus}]:right[ 5h {quota5hUsed} used ({quota5hRemaining} left)][ 7d {quota7dUsed} used ({quota7dRemaining} left)][ credits: {creditsRemaining} left]\n[↑{sessionInput}][ ↓{sessionOutput}][ R{sessionCacheRead}][ W{sessionCacheWrite}][ CH{latestCacheHitRate}%][ {cost} {subscription}] Σ{totalTokens} {percent}%/{contextWindow}[={contextTokens}][ {autoCompaction}][ • {xp}][ {modelProvider} {modelName} {thinkingLevel}]:right\n{extensionStatuses}",
+    "template": "{cwd}[ ({gitBranch})][ • {sessionName}][{balanceLabel}: {balanceStatus}]:right[ 5h {quota5hUsed} used ({quota5hReset})][ 7d {quota7dUsed} used ({quota7dReset})][ credits: {creditsRemaining}]\n[↑{sessionInput}][ ↓{sessionOutput}][ R{sessionCacheRead}][ W{sessionCacheWrite}][ CH{latestCacheHitRate}%][ {cost} {subscription}] Σ{totalTokens} {percent}%/{contextWindow}[={contextTokens}][ {autoCompaction}][ • {xp}][ {modelProvider} {modelName} {thinkingLevel}]:right\n{extensionStatuses}",
     "notificationTemplate": "{time} ({elapsedTime} elapsed/{idleTime} idle) — {tokensPerSecond} tok/s, {cost}, ↑{input} ↓{output} R{cacheRead} W{cacheWrite}, Σ{totalTokens}"
   }
 }
@@ -42,8 +42,8 @@ usage, and the model information right-aligned, exactly like the built-in
 stats line. The `¥` figures are the balance and the run cost in the
 configured display currency (see [Multi-currency cost display](#multi-currency-cost-display));
 for the OAuth subscription providers, the balance slot instead shows the
-quota-window breakdown, e.g. `Codex: 5h 4% used (96% left) 7d 12% used
-(88% left) credits: 0 left` (see [Account balance and provider
+quota-window breakdown, e.g. `Codex: 5h 4% used (~3h) 7d 12% used (~5d)
+credits: 0` (see [Account balance and provider
 quota](#account-balance-and-provider-quota)).
 
 The bracketed sections in the default template are optional: each section is
@@ -229,10 +229,10 @@ For the OAuth subscription providers, the default template renders the rolling
 quota windows instead of a monetary balance, mirroring
 [pi-fancy-footer](https://github.com/mavam/pi-fancy-footer)'s provider-status
 widget and [pi-usage](https://github.com/Sreetej510/pi-extensions):
-`Codex: 5h 4% used (96% left) 7d 12% used (88% left) credits: 0 left` — each
-window is its length (`5h`, `7d`), the **used** percentage, and the remaining
-percentage; the Codex credit balance appears as `credits: 12.34 left` when the
-account reports one. The supported quota providers and their endpoints:
+`Codex: 5h 4% used (~3h) 7d 12% used (~5d) credits: 0` — each window
+is its length (`5h`, `7d`), the **used** percentage, and the reset countdown;
+the Codex credit balance appears as `credits: 12.34` when the account
+reports one. The supported quota providers and their endpoints:
 
 | Provider id | Label | Endpoint | Windows |
 | --- | --- | --- | --- |
@@ -246,18 +246,18 @@ template composes the status above from them, and custom layouts can use them
 the same way, e.g.:
 
 ```text
-{balanceLabel}: [5h {quota5hUsed} used ({quota5hRemaining} left)][ 7d {quota7dUsed} used ({quota7dRemaining} left)][ credits: {creditsRemaining} left]
+{balanceLabel}: [5h {quota5hUsed} used ({quota5hReset})][ 7d {quota7dUsed} used ({quota7dReset})][ credits: {creditsRemaining}]
 ```
 
 The used and remaining fields include the `%` sign. Reset fields contain a
-countdown such as `~2h` when available (the default template omits them; the
-compact status format appends them to windows at or above 75% used), and
-credit fields represent the remaining/available balance rather than credits
-consumed. These fields are empty when their window or credit balance is
-unavailable; an existing window with unknown usage uses `—` for its
-percentages. While quota data is available, `{balanceStatus}` stays empty so
-the breakdown does not duplicate the compact status; only its error or
-`No quota` text renders through `{balanceStatus}`.
+countdown such as `~2h` when available (the default template appends them to
+their window; the compact status format shows them only for windows at or
+above 75% used), and credit fields represent the remaining/available balance
+rather than credits consumed. These fields are empty when their window or
+credit balance is unavailable; an existing window with unknown usage uses `—`
+for its percentages. While quota data is available, `{balanceStatus}` stays
+empty so the breakdown does not duplicate the compact status; only its error
+or `No quota` text renders through `{balanceStatus}`.
 
 Quota status is fetched only while the active model uses OAuth auth for one of
 the quota providers (API-key Claude models have no subscription quota), using
