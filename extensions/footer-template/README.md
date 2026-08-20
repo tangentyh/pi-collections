@@ -169,7 +169,7 @@ cumulative session token fields):
 - `{cacheRead}` / `{cacheWrite}` — cache-read and cache-write token counts
 - `{totalTokens}` — total-token count
 - `{cost}` — cost of the run, formatted in the configured display currency (see [Multi-currency cost display](#multi-currency-cost-display))
-- `{elapsedTime}` — elapsed time, shown as seconds, minutes and seconds, or hours, minutes and seconds
+- `{elapsedTime}` — elapsed time in compact `{h}h{m}m{s}s` form (`2h5m3s`; sub-minute runs show `12.3s`)
 - `{idleTime}` — time since the previous agent run ended, or since `session_start` for the first message, formatted like `{elapsedTime}`
 - `{time}` — wall-clock completion time of the run, in 24-hour `HH:MM:SS` (local time)
 

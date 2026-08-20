@@ -27,10 +27,10 @@ export function formatElapsedTime(elapsedSeconds: number): string {
 	const totalSeconds = Math.floor(secondsValue);
 	const minutes = Math.floor(totalSeconds / 60);
 	const seconds = totalSeconds % 60;
-	if (minutes < 60) return `${minutes} min ${seconds} s`;
+	if (minutes < 60) return `${minutes}m${seconds}s`;
 
 	const hours = Math.floor(minutes / 60);
-	return `${hours} h ${minutes % 60} min ${seconds} s`;
+	return `${hours}h${minutes % 60}m${seconds}s`;
 }
 
 /** The compact token format used by pi's built-in footer. */
