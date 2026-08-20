@@ -51,6 +51,12 @@ running pi with `/reload`.
 > pi's git sources clone a whole repository and install what its root
 > `package.json` declares, so there is no `git:.../extensions/<name>` form.
 
+## Tags
+
+Per-package annotated tags, named after the npm package name (not the
+directory): `<npm-package-name>@<version>`, e.g. `pi-footer-template@0.2.0`.
+Tag each published package version accordingly.
+
 ## Conventions
 
 - Before working on an extension, read that extension's `README.md` first.
