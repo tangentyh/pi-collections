@@ -10,6 +10,8 @@ import { CURRENCIES, ccyRate, formatCost } from "./currency.js";
 import type { RunStats, SessionUsage, UsageTotals } from "./types.js";
 
 const FIELD_PATTERN = /\{([A-Za-z][A-Za-z0-9_]*)(?::right)?\}/g;
+// Square-bracketed sections are omitted when all contained fields are empty.
+const OPTIONAL_GROUP_PATTERN = /\[([^\[\]\r\n]*)\]/g;
 const RIGHT_ALIGN_PATTERN = /\{([A-Za-z][A-Za-z0-9_]*):right\}/;
 
 export function formatElapsedTime(elapsedSeconds: number): string {
@@ -212,14 +214,11 @@ export function getFieldValues(
 	const rawPercent = contextUsage?.percent;
 	const percent = rawPercent === null ? "?" : (rawPercent ?? 0).toFixed(1);
 	// The absolute token count behind the usage percentage (the exact
-	// estimateContextTokens result, not derived from the rounded percent);
-	// carries its own decorations like {gitBranch}/{sessionName}, and is empty
-	// when the estimate is unknown (or no model context is available).
+	// estimateContextTokens result, not derived from the rounded percent),
+	// or empty when the estimate is unknown (or no model context is available).
 	const contextUsageTokens = contextUsage?.tokens;
 	const contextTokens =
-		contextUsageTokens === null || contextUsageTokens === undefined
-			? ""
-			: ` (${formatCount(contextUsageTokens)})`;
+		contextUsageTokens === null || contextUsageTokens === undefined ? "" : formatCount(contextUsageTokens);
 	const usingSubscription = isUsingSubscription(ctx);
 	const branch = footerData.getGitBranch();
 	const sessionName = ctx.sessionManager.getSessionName();
@@ -253,8 +252,8 @@ export function getFieldValues(
 	return {
 		...getRunStatsFields(runStats, options.costCurrency, options.fxRates),
 		cwd: formatCwdForFooter(ctx.sessionManager.getCwd(), process.env.HOME || process.env.USERPROFILE),
-		gitBranch: branch ? ` (${branch})` : "",
-		sessionName: sessionName ? ` • ${sessionName}` : "",
+		gitBranch: branch || "",
+		sessionName: sessionName || "",
 		latestCacheHitRate: latestCacheHitRate === undefined ? "" : latestCacheHitRate.toFixed(1),
 		cost: formatCost(totals.cost, options.costCurrency, options.fxRates),
 		// Overrides the run-stats totalTokens: in footer templates {totalTokens}
@@ -268,14 +267,14 @@ export function getFieldValues(
 		modelInfo: formatModelInfo(ctx, footerData),
 		extensionStatuses: formatExtensionStatuses(footerData),
 		balance: balanceField,
-		xp: process.env.PI_EXPERIMENTAL === "1" ? " • xp" : "",
+		xp: process.env.PI_EXPERIMENTAL === "1" ? "xp" : "",
 	};
 }
 
 /** The default footer template, mirroring pi's built-in footer layout plus the cumulative total-token count and the right-aligned account balance. */
 export const DEFAULT_FOOTER_TEMPLATE =
-	"{cwd}{gitBranch}{sessionName}{balance:right}\n" +
-	"{tokenStats} Σ{totalTokens} {contextUsage}{contextTokens}{xp}{modelInfo:right}\n" +
+	"{cwd}[ ({gitBranch})][ • {sessionName}]{balance:right}\n" +
+	"{tokenStats} Σ{totalTokens} {contextUsage}[ ({contextTokens})][ • {xp}]{modelInfo:right}\n" +
 	"{extensionStatuses}";
 
 /** The notification format used when no custom template is configured; `{cost}` carries its own currency symbol. */
@@ -295,8 +294,23 @@ export function renderRunNotification(
 	);
 }
 
+function expandOptionalGroups(template: string, fields: Record<string, string>): string {
+	return template.replace(OPTIONAL_GROUP_PATTERN, (placeholder, contents: string) => {
+		const fieldMatches = Array.from(contents.matchAll(FIELD_PATTERN));
+		// Preserve bracketed text that does not contain fields, and keep unknown
+		// placeholders unchanged just like ordinary template text.
+		if (
+			fieldMatches.length === 0 ||
+			fieldMatches.some(([, fieldName]) => !Object.prototype.hasOwnProperty.call(fields, fieldName))
+		) {
+			return placeholder;
+		}
+		return fieldMatches.some(([, fieldName]) => fields[fieldName] !== "") ? contents : "";
+	});
+}
+
 function expandTemplate(template: string, fields: Record<string, string>): string {
-	return template.replace(FIELD_PATTERN, (placeholder, fieldName: string) => {
+	return expandOptionalGroups(template, fields).replace(FIELD_PATTERN, (placeholder, fieldName: string) => {
 		return Object.prototype.hasOwnProperty.call(fields, fieldName) ? fields[fieldName] || "" : placeholder;
 	});
 }
@@ -309,13 +323,17 @@ function expandLine(
 	line: string,
 	fields: Record<string, string>,
 ): { text: string; right: { left: string; right: string } | undefined } {
-	const rightMatch = RIGHT_ALIGN_PATTERN.exec(line);
+	// Resolve optional groups before looking for a right-aligned field. This
+	// also allows an optional group to contain a :right placeholder.
+	const expandedOptionalGroups = expandOptionalGroups(line, fields);
+	const rightMatch = RIGHT_ALIGN_PATTERN.exec(expandedOptionalGroups);
 	if (!rightMatch || !Object.prototype.hasOwnProperty.call(fields, rightMatch[1])) {
-		return { text: expandTemplate(line, fields), right: undefined };
+		return { text: expandTemplate(expandedOptionalGroups, fields), right: undefined };
 	}
-	const left = expandTemplate(line.slice(0, rightMatch.index), fields);
+	const left = expandTemplate(expandedOptionalGroups.slice(0, rightMatch.index), fields);
 	const right =
-		fields[rightMatch[1]] + expandTemplate(line.slice(rightMatch.index + rightMatch[0].length), fields);
+		fields[rightMatch[1]] +
+		expandTemplate(expandedOptionalGroups.slice(rightMatch.index + rightMatch[0].length), fields);
 	// An empty right-aligned field (e.g. `{balance}` with no balance) leaves
 	// the line as its left part instead of padding it with trailing spaces.
 	return right === "" ? { text: left, right: undefined } : { text: left + right, right: { left, right } };

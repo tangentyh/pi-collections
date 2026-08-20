@@ -12,7 +12,7 @@ trusted) or global settings. Project settings take precedence:
 ```json
 {
   "footerTemplate": {
-    "template": "{cwd}{gitBranch}{sessionName}{balance:right}\n{tokenStats} Σ{totalTokens} {contextUsage}{contextTokens}{xp}{modelInfo:right}\n{extensionStatuses}",
+    "template": "{cwd}[ ({gitBranch})][ • {sessionName}]{balance:right}\n{tokenStats} Σ{totalTokens} {contextUsage}[ ({contextTokens})][ • {xp}]{modelInfo:right}\n{extensionStatuses}",
     "notificationTemplate": "{time} ({elapsedTime} elapsed/{idleTime} idle) — {tokensPerSecond} tok/s, {cost}, {output} out, {input} in, cache r/w {cacheRead}/{cacheWrite}, Σ{totalTokens}"
   }
 }
@@ -25,8 +25,8 @@ first line, the absolute context-usage token count appended after
 `{tokenStats}`:
 
 ```text
-{cwd}{gitBranch}{sessionName}{balance:right}
-{tokenStats} Σ{totalTokens} {contextUsage}{contextTokens}{xp}{modelInfo:right}
+{cwd}[ ({gitBranch})][ • {sessionName}]{balance:right}
+{tokenStats} Σ{totalTokens} {contextUsage}[ ({contextTokens})][ • {xp}]{modelInfo:right}
 {extensionStatuses}
 ```
 
@@ -35,11 +35,12 @@ line shows e.g. `12.3%/200k (24,680)` — the percentage, the context window,
 and the absolute number of tokens currently used — and `Σ68,234` right after
 the token statistics, the cumulative total tokens used across the session.
 
-`{gitBranch}`, `{sessionName}`, and `{xp}` carry their leading separators (see
-the field table below), and the `:right` modifier pushes a field to the right
-edge of its line — this is how the model information lands on the right side,
-just like the built-in footer. The third line renders only when extension
-statuses exist.
+The bracketed sections in the default template are optional: each section is
+omitted when all of its fields are empty. Separators and other decorations
+therefore live in the string template, while fields contain only their values.
+The `:right` modifier pushes a field to the right edge of its line — this is
+how the model information lands on the right side, just like the built-in
+footer. The third line renders only when extension statuses exist.
 
 A string value is also accepted for convenience:
 
@@ -65,8 +66,10 @@ above). An empty or whitespace-only template disables the custom
 footer, so pi's built-in footer remains active. Reload pi after changing the
 setting.
 
-Unknown placeholders are left unchanged. Each rendered line is truncated to
-the terminal width, like pi's built-in footer.
+Unknown placeholders are left unchanged. Bracketed sections containing fields
+are omitted when all of those fields are empty; bracketed text without fields
+is left literal. Each rendered line is truncated to the terminal width, like
+pi's built-in footer.
 
 ## Built-in fields
 
@@ -75,8 +78,8 @@ These fields provide the values shown by pi's built-in footer:
 | Field | Value |
 | --- | --- |
 | `{cwd}` | Current working directory, with the home directory abbreviated as `~` |
-| `{gitBranch}` | ` (branch)` — git branch in parentheses, leading space included; empty when unavailable |
-| `{sessionName}` | ` • name` — session name with a leading bullet; empty when unnamed |
+| `{gitBranch}` | `branch` — current git branch; empty when unavailable |
+| `{sessionName}` | `name` — session name; empty when unnamed |
 | `{latestCacheHitRate}` | Latest assistant cache-hit percentage, without the `%` sign |
 | `{cost}` | Cumulative cost, converted to the configured display currency (see [Multi-currency cost display](#multi-currency-cost-display)) |
 | `{percent}` | Current context usage percentage, formatted to one decimal place, or `?` |
@@ -84,11 +87,11 @@ These fields provide the values shown by pi's built-in footer:
 | `{tokenStats}` | Cumulative input/output/cache/cost statistics; the cost figure is converted to the configured display currency |
 | `{totalTokens}` | Cumulative total tokens used across the session (assistant messages, tool results, and compaction/branch-summary generation), as an exact count, e.g. `68,234` |
 | `{contextUsage}` | `{percent}%/{contextWindow}`, with `(auto)` when auto-compaction is enabled |
-| `{contextTokens}` | ` (24,680)` — absolute number of context tokens currently used, with a leading space and parentheses; empty when the usage percentage is unknown or no model context is available |
+| `{contextTokens}` | `24,680` — absolute number of context tokens currently used; empty when the usage percentage is unknown or no model context is available |
 | `{modelInfo}` | Model name, thinking level, and provider when multiple providers are available |
 | `{extensionStatuses}` | Persistent extension statuses, sorted and joined on one line |
 | `{balance}` | Account balance of the active provider, e.g. `DeepSeek: $17.35`, converted to the configured display currency when possible; for the OAuth subscription providers (Codex, Claude) it shows the provider quota status instead, e.g. `Claude: 5h:23% 7d:41%`; empty when the active provider has neither a balance endpoint nor quota windows (see [Account balance and provider quota](#account-balance-and-provider-quota)) |
-| `{xp}` | ` • xp` when `PI_EXPERIMENTAL=1`, otherwise empty |
+| `{xp}` | `xp` when `PI_EXPERIMENTAL=1`, otherwise empty |
 
 Appending `:right` to any field name right-aligns that field's value on its
 line, e.g. `{modelInfo:right}`. The line is split at that placeholder: the
