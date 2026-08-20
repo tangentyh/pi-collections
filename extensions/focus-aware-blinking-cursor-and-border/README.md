@@ -46,3 +46,7 @@ Or add it to the `packages` array in `~/.pi/agent/settings.json`:
 - Works with `scroll-speed` in any load order: it delegates to a previously
   registered editor factory instead of replacing it.
 - Requires fullscreen (alt-screen) TUI mode for the terminal-focus signal.
+- Works with pi's `showHardwareCursor` setting: the zero-width
+  hardware-cursor marker pi-tui emits next to the fake cursor is stripped
+  on the "off" half of the blink, so the terminal's own (non-blinking)
+  cursor doesn't keep the cell permanently visible.

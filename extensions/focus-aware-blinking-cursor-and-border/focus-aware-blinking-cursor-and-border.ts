@@ -4,7 +4,7 @@ import {
 	type ExtensionContext,
 	type KeybindingsManager,
 } from "@earendil-works/pi-coding-agent";
-import type { EditorTheme, TUI } from "@earendil-works/pi-tui";
+import { CURSOR_MARKER, type EditorTheme, type TUI } from "@earendil-works/pi-tui";
 
 const BLINK_MS = 530; // classic ~2 Hz terminal cursor blink
 
@@ -186,9 +186,17 @@ class BlinkingCursorEditor extends CustomEditor {
 		// emits (`\x1b[7m<grapheme>\x1b[0m` or `\x1b[27m`); replace it
 		// with the plain character so the layout (width/padding) stays
 		// identical. pi-tui has used both reset forms across releases.
+		// The zero-width hardware-cursor marker must go too: with pi's
+		// `showHardwareCursor` setting the TUI parks the terminal's own
+		// (non-blinking) cursor on it, which keeps the cursor cell
+		// permanently visible even while the fake cursor blinks. Without
+		// the marker the TUI finds no cursor position and hides the
+		// hardware cursor (`\x1b[?25l`) for the rest of the frame.
 		if (!focused || !this.cursorVisibleAt(performance.now())) {
 			for (let i = 0; i < lines.length; i++) {
-				lines[i] = lines[i]!.replace(/\x1b\[7m([\s\S]*?)\x1b\[(?:0|27)m/g, (_m, ch) => ch);
+				lines[i] = lines[i]!
+					.replace(/\x1b\[7m([\s\S]*?)\x1b\[(?:0|27)m/g, (_m, ch) => ch)
+					.replaceAll(CURSOR_MARKER, "");
 			}
 		}
 		return lines;
