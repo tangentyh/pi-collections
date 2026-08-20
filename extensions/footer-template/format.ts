@@ -6,7 +6,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { BALANCE_PROVIDERS } from "./balance.js";
-import { CURRENCIES, ccyRate, formatCost } from "./currency.js";
+import { AUTO_CURRENCY, CURRENCIES, ccyRate, formatCost, resolveAutoCurrency } from "./currency.js";
 import { getQuotaTemplateFields, QUOTA_PROVIDERS } from "./quota.js";
 import type { QuotaValue } from "./quota.js";
 import type { RunStats, SessionUsage, UsageTotals } from "./types.js";
@@ -149,7 +149,7 @@ function isUsingSubscription(ctx: ExtensionContext): boolean {
 
 /** Options controlling currency conversion and balance rendering of the fields. */
 export interface FooterFieldOptions {
-	/** The configured display currency (a `CURRENCIES` key). */
+	/** The configured display currency: a `CURRENCIES` key, or `auto` to resolve per provider (CNY for Chinese providers, USD otherwise). */
 	costCurrency: string;
 	/** The cached USD-based exchange-rate table, or null when unavailable. */
 	fxRates: Record<string, number> | null;
@@ -185,6 +185,12 @@ export function getFieldValues(
 ): Record<string, string> {
 	const { totals, latestCacheHitRate } = sessionUsage;
 	const model = ctx.model;
+	// `auto` resolves per provider: CNY for the extension's Chinese providers
+	// (deepseek, moonshotai-cn, siliconflow, zhipu), USD for everyone else.
+	const costCurrency =
+		options.costCurrency === AUTO_CURRENCY
+			? resolveAutoCurrency(model?.provider)
+			: options.costCurrency;
 	const contextUsage = ctx.getContextUsage();
 	const contextWindow = contextUsage?.contextWindow ?? model?.contextWindow ?? 0;
 	const rawPercent = contextUsage?.percent;
@@ -217,7 +223,7 @@ export function getFieldValues(
 			? formatBalanceField(
 					balanceProviderLabel,
 					options.balanceValue,
-					options.costCurrency,
+					costCurrency,
 					options.fxRates,
 					options.balanceText,
 				)
@@ -239,7 +245,7 @@ export function getFieldValues(
 	const quotaFields = getQuotaTemplateFields(options.quotaValue);
 
 	return {
-		...getRunStatsFields(runStats, options.costCurrency, options.fxRates),
+		...getRunStatsFields(runStats, costCurrency, options.fxRates),
 		cwd: formatCwdForFooter(ctx.sessionManager.getCwd(), process.env.HOME || process.env.USERPROFILE),
 		gitBranch: branch || "",
 		sessionName: sessionName || "",
@@ -252,7 +258,7 @@ export function getFieldValues(
 		// Overrides the run-stats cost: in footer templates {cost} is the
 		// cumulative session total (empty while nothing was spent), so it can
 		// sit next to the session token fields.
-		cost: totals.cost > 0 ? formatCost(totals.cost, options.costCurrency, options.fxRates) : "",
+		cost: totals.cost > 0 ? formatCost(totals.cost, costCurrency, options.fxRates) : "",
 		// Overrides the run-stats totalTokens: cumulative session total, so it
 		// can sit next to the session token fields.
 		totalTokens: formatCount(totals.totalTokens),

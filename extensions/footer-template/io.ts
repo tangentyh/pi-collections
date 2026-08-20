@@ -5,7 +5,7 @@ import {
 	getAgentDir,
 	type ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { CURRENCIES } from "./currency.js";
+import { CURRENCIES, AUTO_CURRENCY } from "./currency.js";
 
 interface SettingsObject {
 	[key: string]: unknown;
@@ -25,10 +25,11 @@ export interface FooterConfiguration {
 	notificationTemplate: string | undefined;
 	/**
 	 * Display currency for cost and balance figures: always a valid
-	 * `CURRENCIES` key; "USD" when not configured. Set with `/set-currency`
-	 * (which writes the global settings) or directly via the `costCurrency`
-	 * key in the `footerTemplate` settings object; a project-level value
-	 * shadows the global one like any other setting.
+	 * `CURRENCIES` key or "auto"; "auto" (the default) resolves per provider
+	 * — CNY for the extension's Chinese providers, USD otherwise. Set with
+	 * `/set-currency` (which writes the global settings) or directly via the
+	 * `costCurrency` key in the `footerTemplate` settings object; a
+	 * project-level value shadows the global one like any other setting.
 	 */
 	costCurrency: string;
 	autoCompactionEnabled: boolean;
@@ -108,13 +109,14 @@ function getCompactionEnabled(settings: SettingsObject): boolean | undefined {
 }
 
 /**
- * The configured display currency. Always a valid `CURRENCIES` key; "USD"
- * when unset or invalid.
+ * The configured display currency. Always a valid `CURRENCIES` key or
+ * "auto"; "auto" when unset or invalid.
  */
 function getCostCurrency(settings: SettingsObject): string {
 	const footer = settings.footerTemplate;
-	if (!isRecord(footer) || typeof footer.costCurrency !== "string") return "USD";
-	return CURRENCIES[footer.costCurrency] ? footer.costCurrency : "USD";
+	if (!isRecord(footer) || typeof footer.costCurrency !== "string") return AUTO_CURRENCY;
+	const ccy = footer.costCurrency;
+	return ccy === AUTO_CURRENCY || CURRENCIES[ccy] ? ccy : AUTO_CURRENCY;
 }
 
 export function resolveFooterConfiguration(ctx: ExtensionContext): FooterConfiguration {

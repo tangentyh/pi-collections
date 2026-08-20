@@ -33,6 +33,43 @@ export const CURRENCIES: Record<string, { symbol: string; decimals: number }> = 
 /** Space-joined currency codes, for `/set-currency` help notifications. */
 export const CURRENCY_LIST = Object.keys(CURRENCIES).join(" ");
 
+/** The `auto` mode of the `costCurrency` setting: resolves per provider. */
+export const AUTO_CURRENCY = "auto";
+
+/**
+ * Provider ids billed in CNY — the extension's Chinese balance providers
+ * (see balance.ts): DeepSeek, Moonshot CN, SiliconFlow, and Zhipu. The
+ * extension's remaining providers bill in USD: OpenRouter (balance.ts) and
+ * the quota providers Codex and Claude (see quota.ts); any other provider
+ * defaults to USD too.
+ */
+const CNY_PROVIDERS = new Set(["deepseek", "moonshotai-cn", "siliconflow", "zhipu"]);
+
+/**
+ * The currency `auto` resolves to for a provider: CNY for the extension's
+ * Chinese providers (deepseek, moonshotai-cn, siliconflow, zhipu), USD for
+ * every other provider — openrouter, openai-codex, anthropic, and any
+ * provider the extension does not offer. DeepSeek keeps its prefix match,
+ * like resolveBalanceProvider.
+ */
+export function resolveAutoCurrency(provider: string | undefined): string {
+	if (!provider) return "USD";
+	const id = provider.toLowerCase();
+	if (id.startsWith("deepseek")) return "CNY";
+	return CNY_PROVIDERS.has(id) ? "CNY" : "USD";
+}
+
+/**
+ * The effective display currency: `auto` resolves per provider, any other
+ * configured value is used as-is.
+ */
+export function resolveDisplayCurrency(
+	configured: string,
+	provider: string | undefined,
+): string {
+	return configured === AUTO_CURRENCY ? resolveAutoCurrency(provider) : configured;
+}
+
 /** How long a fetched rate table stays usable (pi-tidy-footer: 24h). */
 const FX_TTL_MS = 86_400_000;
 const FX_FETCH_TIMEOUT_MS = 5000;

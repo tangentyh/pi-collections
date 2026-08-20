@@ -14,7 +14,7 @@ trusted) or global settings. Project settings take precedence:
   "footerTemplate": {
     "template": "{cwd}[ ({gitBranch})][ • {sessionName}][{balanceLabel}: {balanceStatus}]:right[ 5h {quota5hUsed} used ({quota5hReset})][ 7d {quota7dUsed} used ({quota7dReset})][ credits: {creditsRemaining}]\n[↑{sessionInput}][ ↓{sessionOutput}][ R{sessionCacheRead}][ W{sessionCacheWrite}][ CH{latestCacheHitRate}%][ {cost} {subscription}] Σ{totalTokens} {percent}%/{contextWindow}[={contextTokens}][ {autoCompaction}][ • {xp}][ {modelProvider} {modelName} {thinkingLevel}]:right\n{extensionStatuses}",
     "notificationTemplate": "{time} ({elapsedTime} elapsed/{idleTime} idle) — {tokensPerSecond} tok/s, {cost}, ↑{input} ↓{output} R{cacheRead} W{cacheWrite}, Σ{totalTokens}",
-    "costCurrency": "USD"
+    "costCurrency": "auto"
   }
 }
 ```
@@ -188,10 +188,27 @@ converted to a configurable display currency, like
 | --- | --- |
 | `/set-currency` | Show the current currency and the list of available codes |
 | `/set-currency <code>` | Set the display currency, e.g. `/set-currency EUR` |
+| `/set-currency auto` | Restore the provider-based default |
 
-Available currencies: `AUD` (A$), `CAD` (C$), `CNY` (¥), `EUR` (€), `GBP` (£), `HKD` (HK$), `JPY` (¥), `KRW` (₩), `TWD` (NT$), `USD` ($, the default). Each currency defines its own decimal places (0 for JPY/KRW, 3 for USD, 2 otherwise), matching pi-tidy-footer. The selection is user config and lives in the settings as `footerTemplate.costCurrency`: `/set-currency` writes it to the global settings (`~/.pi/agent/settings.json`), and a project-level `costCurrency` in `.pi/settings.json` shadows the global value like any other setting. Setting `costCurrency` directly also works, e.g. `{"footerTemplate": {"costCurrency": "EUR"}}`.
+The default is `auto`: the currency follows the active provider. CNY is used
+for the extension's Chinese providers — `deepseek`, `moonshotai-cn`,
+`siliconflow`, `zhipu` — and USD for every other provider: `openrouter`,
+the quota providers `openai-codex` and `anthropic`, and anything else. So a
+DeepSeek model shows its cost and balance as `¥...`, an OpenRouter model as
+`$...`, and switching models switches the currency with them.
 
-Exchange rates come from the free `@fawazahmed0/currency-api` package (served from the jsdelivr CDN, USD base). They are fetched once per 24 hours on session start and after `/set-currency` changes, cached in memory, and persisted as a rebuildable cache in `~/.pi/agent/pi-footer-template-state.json` (the agent dir, resolved via `getAgentDir()`, honors `PI_CODING_AGENT_DIR`); fetch failures keep the previous cache. USD needs no rates at all, so it always works offline. When a non-USD currency is selected and no rate is available, the cost renders as the currency symbol with `--` (e.g. `€--`), and the account balance falls back to its native currency formatting.
+Available currencies: `AUD` (A$), `CAD` (C$), `CNY` (¥), `EUR` (€), `GBP` (£),
+`HKD` (HK$), `JPY` (¥), `KRW` (₩), `TWD` (NT$), `USD` ($). Each currency
+defines its own decimal places (0 for JPY/KRW, 3 for USD, 2 otherwise),
+matching pi-tidy-footer. The selection is user config and lives in the
+settings as `footerTemplate.costCurrency`: `/set-currency` writes it to the
+global settings (`~/.pi/agent/settings.json`), and a project-level
+`costCurrency` in `.pi/settings.json` shadows the global value like any other
+setting. Setting `costCurrency` directly also works, e.g.
+`{"footerTemplate": {"costCurrency": "EUR"}}`; an unset `costCurrency`
+means `auto`.
+
+Exchange rates come from the free `@fawazahmed0/currency-api` package (served from the jsdelivr CDN, USD base). They are fetched once per 24 hours on session start and after `/set-currency` changes, cached in memory, and persisted as a rebuildable cache in `~/.pi/agent/pi-footer-template-state.json` (the agent dir, resolved via `getAgentDir()`, honors `PI_CODING_AGENT_DIR`); fetch failures keep the previous cache. USD needs no rates at all, so it always works offline. When a non-USD currency is selected and no rate is available, the cost renders as the currency symbol with `--` (e.g. `€--`), and the account balance falls back to its native currency formatting. In `auto` mode this applies to the resolved currency: a DeepSeek model without a cached CNY rate renders `¥--` for costs, and the balance keeps its native currency.
 
 ## Account balance and provider quota
 
@@ -376,4 +393,5 @@ automatically.
   independently of the footer template; an explicitly empty
   `notificationTemplate` disables it.
 - Cost and account-balance figures are converted into the currency selected
-  with `/set-currency`; USD is the default and needs no exchange rates.
+  with `/set-currency`; `auto` is the default (CNY for the extension's
+  Chinese providers, USD otherwise) and USD needs no exchange rates.

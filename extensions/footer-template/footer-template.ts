@@ -18,7 +18,7 @@ import {
 	resolveQuotaProvider,
 } from "./quota.js";
 import type { QuotaValue } from "./quota.js";
-import { CURRENCIES, CURRENCY_LIST, getFxRates, refreshFxIfStale } from "./currency.js";
+import { AUTO_CURRENCY, CURRENCIES, CURRENCY_LIST, getFxRates, refreshFxIfStale, resolveDisplayCurrency } from "./currency.js";
 import {
 	DEFAULT_FOOTER_TEMPLATE,
 	formatElapsedTime,
@@ -130,9 +130,10 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 	let runStats = emptyRunStats();
 	let requestFooterRender: (() => void) | undefined;
 	let customFooterInstalled = false;
-	// Display currency from settings (`footerTemplate.costCurrency`); kept
+	// Display currency from settings (`footerTemplate.costCurrency`): a
+	// concrete code or "auto" (the default, resolving per provider); kept
 	// mutable so /set-currency applies without reloading pi.
-	let activeCurrency = "USD";
+	let activeCurrency = AUTO_CURRENCY;
 
 	// Account balance behind the {balanceLabel}/{balanceStatus} fields.
 	// Supported providers mirror
@@ -331,7 +332,7 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 			renderRunNotification(
 				configuration.notificationTemplate,
 				nextRunStats,
-				activeCurrency,
+				resolveDisplayCurrency(activeCurrency, ctx.model?.provider),
 				getFxRates(),
 			),
 			"info",
@@ -478,40 +479,57 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 			"Currency for cost and DeepSeek balance: /set-currency <code> = set; no args = show",
 		getArgumentCompletions: (prefix) => {
 			const needle = prefix.trim().toUpperCase();
-			return Object.keys(CURRENCIES)
-				.filter((ccy) => ccy.startsWith(needle))
-				.map((ccy) => ({
+			return [
+				{
+					value: AUTO_CURRENCY,
+					label: AUTO_CURRENCY,
+					description:
+						"provider-based: CNY for Chinese providers (deepseek, siliconflow, ...), USD otherwise (default)",
+				},
+				...Object.keys(CURRENCIES).map((ccy) => ({
 					value: ccy,
 					label: ccy,
-					description: `${CURRENCIES[ccy].symbol} (${ccy === "USD" ? "default" : "converted via daily FX"})`,
-				}));
+					description: `${CURRENCIES[ccy].symbol} (${ccy === "USD" ? "no FX needed" : "converted via daily FX"})`,
+				})),
+			].filter((c) => c.value.toUpperCase().startsWith(needle));
 		},
 		handler: async (args, ctx) => {
 			const ccy = args.trim().toUpperCase();
 			if (!ccy) {
+				const current =
+					activeCurrency === AUTO_CURRENCY
+						? `auto (${resolveDisplayCurrency(activeCurrency, ctx.model?.provider)} for ${ctx.model?.provider ?? "the active provider"})`
+						: `${activeCurrency} (${CURRENCIES[activeCurrency].symbol})`;
 				ctx.ui.notify(
-					`Currency: ${activeCurrency} (${CURRENCIES[activeCurrency]?.symbol ?? "$"}). Available: ${CURRENCY_LIST}`,
+					`Currency: ${current}. Available: AUTO (provider-based) + ${CURRENCY_LIST}`,
 					"info",
 				);
 				return;
 			}
-			if (!CURRENCIES[ccy]) {
-				ctx.ui.notify(`Invalid currency: "${ccy}". Available: ${CURRENCY_LIST}`, "error");
+			if (ccy !== "AUTO" && !CURRENCIES[ccy]) {
+				ctx.ui.notify(`Invalid currency: "${ccy}". Use AUTO or one of: ${CURRENCY_LIST}`, "error");
 				return;
 			}
 			// Persist in global settings; a project-level `costCurrency` shadows
 			// the global value via the settings merge, so re-resolve to report
 			// the effective currency.
-			writeGlobalCostCurrency(ccy);
+			writeGlobalCostCurrency(ccy === "AUTO" ? AUTO_CURRENCY : ccy);
 			activeCurrency = resolveFooterConfiguration(ctx).costCurrency;
 			requestFooterRender?.();
-			// Kick off a rate fetch so the new currency converts right away;
-			// the footer picks the rates up when the fetch completes.
+			// Kick off a rate fetch so the effective currency converts right
+			// away; the footer picks the rates up when the fetch completes.
 			void refreshFxIfStale().then(() => requestFooterRender?.());
-			ctx.ui.notify(
-				`Currency: ${activeCurrency} (${CURRENCIES[activeCurrency].symbol}). Cost and account balances are now shown in ${activeCurrency}.`,
-				"info",
-			);
+			if (activeCurrency === AUTO_CURRENCY) {
+				ctx.ui.notify(
+					`Currency: auto — CNY for Chinese providers (deepseek, moonshotai-cn, siliconflow, zhipu), USD otherwise.`,
+					"info",
+				);
+			} else {
+				ctx.ui.notify(
+					`Currency: ${activeCurrency} (${CURRENCIES[activeCurrency].symbol}). Cost and account balances are now shown in ${activeCurrency}.`,
+					"info",
+				);
+			}
 		},
 	});
 }
