@@ -5,14 +5,16 @@
  * USD by the model registry, and are converted to the configured display
  * currency using daily exchange rates fetched from the free
  * `@fawazahmed0/currency-api` CDN build (USD base). Rates are cached for 24
- * hours and persisted next to the settings in
- * `~/.pi/agent/extensions/pi-footer-template-state.json`, together with the
- * selected currency. USD needs no rates at all, so it always works offline.
+ * hours and persisted in `~/.pi/agent/pi-footer-template-state.json` (the
+ * agent dir, resolved via `getAgentDir()`, see
+ * docs/extension-config-and-cache.md). The selected currency is user config
+ * and lives in settings.json as `footerTemplate.costCurrency` (see io.ts).
+ * USD needs no rates at all, so it always works offline.
  */
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
 
 /** Display currencies: symbol and decimal places, like pi-tidy-footer. */
 export const CURRENCIES: Record<string, { symbol: string; decimals: number }> = {
@@ -41,22 +43,39 @@ const FX_URL =
 /*  persistence                                                        */
 /* ------------------------------------------------------------------ */
 
-const STATE_DIR = join(homedir(), ".pi", "agent", "extensions");
-const STATE_FILE = join(STATE_DIR, "pi-footer-template-state.json");
+/**
+ * The FX-rate cache lives in the agent dir root — NOT in
+ * `~/.pi/agent/extensions/`, which is pi's auto-discovery directory for
+ * extension code and is managed (and wiped) by `pi install`. The agent dir
+ * is resolved via `getAgentDir()` so `PI_CODING_AGENT_DIR` (and rebranded
+ * distributions) are honored. See docs/extension-config-and-cache.md.
+ */
+const STATE_FILE = join(getAgentDir(), "pi-footer-template-state.json");
 
 let stateCache: Record<string, unknown> | null = null;
 
+/** Read a state file; missing or corrupt files are treated as "no state". */
+function readStateFile(file: string): Record<string, unknown> {
+	try {
+		const parsed: unknown = JSON.parse(readFileSync(file, "utf8"));
+		return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
+			? (parsed as Record<string, unknown>)
+			: {};
+	} catch {
+		return {};
+	}
+}
+
+/** Atomic write (temp file + rename): a crash never leaves a torn file. */
+function writeStateFile(file: string, state: Record<string, unknown>): void {
+	const tmp = `${file}.tmp`;
+	writeFileSync(tmp, JSON.stringify(state), "utf8");
+	renameSync(tmp, file);
+}
+
 function loadState(): Record<string, unknown> {
 	if (stateCache) return stateCache;
-	try {
-		const parsed: unknown = JSON.parse(readFileSync(STATE_FILE, "utf8"));
-		stateCache =
-			typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
-				? (parsed as Record<string, unknown>)
-				: {};
-	} catch {
-		stateCache = {};
-	}
+	stateCache = readStateFile(STATE_FILE);
 	return stateCache;
 }
 
@@ -64,22 +83,12 @@ function mergeState(patch: Record<string, unknown>): void {
 	const prev = loadState();
 	const next = { ...prev, ...patch };
 	try {
-		mkdirSync(STATE_DIR, { recursive: true });
-		writeFileSync(STATE_FILE, JSON.stringify(next), "utf8");
+		mkdirSync(getAgentDir(), { recursive: true });
+		writeStateFile(STATE_FILE, next);
 		Object.assign(prev, patch);
 	} catch (error) {
 		console.error("pi-footer-template: mergeState failed", error);
 	}
-}
-
-/** The configured display currency; always a valid `CURRENCIES` key. */
-export function readCostCurrency(): string {
-	const value = loadState().costCurrency;
-	return typeof value === "string" && CURRENCIES[value] ? value : "USD";
-}
-
-export function writeCostCurrency(ccy: string): void {
-	mergeState({ costCurrency: ccy });
 }
 
 /* ------------------------------------------------------------------ */

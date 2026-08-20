@@ -18,7 +18,7 @@ import {
 	resolveQuotaProvider,
 } from "./quota.js";
 import type { QuotaValue } from "./quota.js";
-import { CURRENCIES, CURRENCY_LIST, getFxRates, readCostCurrency, refreshFxIfStale, writeCostCurrency } from "./currency.js";
+import { CURRENCIES, CURRENCY_LIST, getFxRates, refreshFxIfStale } from "./currency.js";
 import {
 	DEFAULT_FOOTER_TEMPLATE,
 	formatElapsedTime,
@@ -27,7 +27,7 @@ import {
 	renderRunNotification,
 	renderTemplate,
 } from "./format.js";
-import { resolveFooterConfiguration } from "./io.js";
+import { resolveFooterConfiguration, writeGlobalCostCurrency } from "./io.js";
 import type { RunStats, SessionUsage, UsageTotals } from "./types.js";
 
 function isAssistantMessage(message: unknown): message is AssistantMessage {
@@ -130,6 +130,9 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 	let runStats = emptyRunStats();
 	let requestFooterRender: (() => void) | undefined;
 	let customFooterInstalled = false;
+	// Display currency from settings (`footerTemplate.costCurrency`); kept
+	// mutable so /set-currency applies without reloading pi.
+	let activeCurrency = "USD";
 
 	// Account balance behind the {balanceLabel}/{balanceStatus} fields.
 	// Supported providers mirror
@@ -320,6 +323,7 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 
 		if (!ctx.hasUI) return;
 		const configuration = resolveFooterConfiguration(ctx);
+		activeCurrency = configuration.costCurrency;
 		// Like the footer template, an explicit empty notification template
 		// opts out; only an unset one falls back to the default format.
 		if (configuration.notificationTemplate === "") return;
@@ -327,7 +331,7 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 			renderRunNotification(
 				configuration.notificationTemplate,
 				nextRunStats,
-				readCostCurrency(),
+				activeCurrency,
 				getFxRates(),
 			),
 			"info",
@@ -392,6 +396,7 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 		if (ctx.mode !== "tui") return;
 
 		const configuration = resolveFooterConfiguration(ctx);
+		activeCurrency = configuration.costCurrency;
 		// No configured template falls back to the built-in-shaped default; an
 		// explicit empty template opts out and keeps pi's built-in footer.
 		const footerTemplate = configuration.template ?? DEFAULT_FOOTER_TEMPLATE;
@@ -421,7 +426,7 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 						getSessionUsage(ctx),
 						runStats,
 						{
-							costCurrency: readCostCurrency(),
+							costCurrency: activeCurrency,
 							fxRates: getFxRates(),
 							autoCompactionEnabled: configuration.autoCompactionEnabled,
 							balanceText,
@@ -484,9 +489,8 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 		handler: async (args, ctx) => {
 			const ccy = args.trim().toUpperCase();
 			if (!ccy) {
-				const current = readCostCurrency();
 				ctx.ui.notify(
-					`Currency: ${current} (${CURRENCIES[current]?.symbol ?? "$"}). Available: ${CURRENCY_LIST}`,
+					`Currency: ${activeCurrency} (${CURRENCIES[activeCurrency]?.symbol ?? "$"}). Available: ${CURRENCY_LIST}`,
 					"info",
 				);
 				return;
@@ -495,13 +499,17 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 				ctx.ui.notify(`Invalid currency: "${ccy}". Available: ${CURRENCY_LIST}`, "error");
 				return;
 			}
-			writeCostCurrency(ccy);
+			// Persist in global settings; a project-level `costCurrency` shadows
+			// the global value via the settings merge, so re-resolve to report
+			// the effective currency.
+			writeGlobalCostCurrency(ccy);
+			activeCurrency = resolveFooterConfiguration(ctx).costCurrency;
 			requestFooterRender?.();
 			// Kick off a rate fetch so the new currency converts right away;
 			// the footer picks the rates up when the fetch completes.
 			void refreshFxIfStale().then(() => requestFooterRender?.());
 			ctx.ui.notify(
-				`Currency: ${ccy} (${CURRENCIES[ccy].symbol}). Cost and account balances are now shown in ${ccy}.`,
+				`Currency: ${activeCurrency} (${CURRENCIES[activeCurrency].symbol}). Cost and account balances are now shown in ${activeCurrency}.`,
 				"info",
 			);
 		},

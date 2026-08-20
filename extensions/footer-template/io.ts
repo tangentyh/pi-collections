@@ -1,10 +1,11 @@
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
 	CONFIG_DIR_NAME,
 	getAgentDir,
 	type ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
+import { CURRENCIES } from "./currency.js";
 
 interface SettingsObject {
 	[key: string]: unknown;
@@ -22,6 +23,14 @@ export interface FooterConfiguration {
 	 * disable the notification entirely.
 	 */
 	notificationTemplate: string | undefined;
+	/**
+	 * Display currency for cost and balance figures: always a valid
+	 * `CURRENCIES` key; "USD" when not configured. Set with `/set-currency`
+	 * (which writes the global settings) or directly via the `costCurrency`
+	 * key in the `footerTemplate` settings object; a project-level value
+	 * shadows the global one like any other setting.
+	 */
+	costCurrency: string;
 	autoCompactionEnabled: boolean;
 }
 
@@ -98,6 +107,16 @@ function getCompactionEnabled(settings: SettingsObject): boolean | undefined {
 	return compaction.enabled;
 }
 
+/**
+ * The configured display currency. Always a valid `CURRENCIES` key; "USD"
+ * when unset or invalid.
+ */
+function getCostCurrency(settings: SettingsObject): string {
+	const footer = settings.footerTemplate;
+	if (!isRecord(footer) || typeof footer.costCurrency !== "string") return "USD";
+	return CURRENCIES[footer.costCurrency] ? footer.costCurrency : "USD";
+}
+
 export function resolveFooterConfiguration(ctx: ExtensionContext): FooterConfiguration {
 	const globalSettings = readSettingsFile(join(getAgentDir(), "settings.json"));
 	const projectSettings = ctx.isProjectTrusted()
@@ -108,6 +127,35 @@ export function resolveFooterConfiguration(ctx: ExtensionContext): FooterConfigu
 	return {
 		template: getFooterTemplate(settings),
 		notificationTemplate: getNotificationTemplate(settings),
+		costCurrency: getCostCurrency(settings),
 		autoCompactionEnabled: getCompactionEnabled(settings) ?? true,
 	};
+}
+
+/**
+ * Persist the display currency in global settings as
+ * `footerTemplate.costCurrency`, preserving all other settings. The project
+ * settings file is untouched; a project-level `costCurrency` still shadows
+ * the global value through the usual merge. Failures are logged and ignored,
+ * so the change just won't persist.
+ */
+export function writeGlobalCostCurrency(ccy: string): void {
+	const settingsPath = join(getAgentDir(), "settings.json");
+	try {
+		const settings = readSettingsFile(settingsPath) ?? {};
+		const footer = settings.footerTemplate;
+		// Keep a string-form footerTemplate working: it only configures the
+		// template, which the object form's `template` key preserves.
+		settings.footerTemplate = isRecord(footer)
+			? { ...footer, costCurrency: ccy }
+			: typeof footer === "string"
+				? { template: footer, costCurrency: ccy }
+				: { costCurrency: ccy };
+		mkdirSync(getAgentDir(), { recursive: true });
+		const tmp = `${settingsPath}.tmp`;
+		writeFileSync(tmp, JSON.stringify(settings, null, 2), "utf8");
+		renameSync(tmp, settingsPath);
+	} catch (error) {
+		console.error("pi-footer-template: writeGlobalCostCurrency failed", error);
+	}
 }
