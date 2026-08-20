@@ -58,3 +58,4 @@ running pi with `/reload`.
 - Entry files are semantic (`<name>.ts`), not `index.ts`.
 - Every extension ships its own `README.md` and `LICENSE` (MIT).
 - Root is never published, never given a `pi` manifest.
+- Do not prepare bump version or modify CHANGELOG unless asked.
