@@ -183,11 +183,12 @@ class BlinkingCursorEditor extends CustomEditor {
 
 		// Hide the fake cursor when unfocused, or on the "off" half of the
 		// blink. The fake cursor is the only reverse-video segment the editor
-		// emits (`\x1b[7m<grapheme>\x1b[0m`); replace it with the plain
-		// character so the layout (width/padding) stays identical.
+		// emits (`\x1b[7m<grapheme>\x1b[0m` or `\x1b[27m`); replace it
+		// with the plain character so the layout (width/padding) stays
+		// identical. pi-tui has used both reset forms across releases.
 		if (!focused || !this.cursorVisibleAt(performance.now())) {
 			for (let i = 0; i < lines.length; i++) {
-				lines[i] = lines[i]!.replace(/\x1b\[7m([\s\S]*?)\x1b\[0m/g, (_m, ch) => ch);
+				lines[i] = lines[i]!.replace(/\x1b\[7m([\s\S]*?)\x1b\[(?:0|27)m/g, (_m, ch) => ch);
 			}
 		}
 		return lines;
