@@ -145,6 +145,9 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 	let balanceFreshUntil = 0;
 	let balanceFetching: Promise<void> | undefined;
 	let balanceFetchSeq = 0;
+	// Provider of the currently active model, tracked synchronously from live
+	// event ctxs (see activeQuotaProvider).
+	let activeBalanceProvider: string | undefined;
 
 	// Provider quota status behind the {balanceLabel}/{balanceStatus} fields
 	// for the OAuth
@@ -161,12 +164,21 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 	let quotaFreshUntil = 0;
 	let quotaFetching: Promise<void> | undefined;
 	let quotaFetchSeq = 0;
+	// Provider of the currently active OAuth model, tracked synchronously from
+	// live event ctxs. In-flight fetch completions must compare against this
+	// instead of the captured ctx: after a session replacement or reload the
+	// captured ctx is stale and reading any of its getters throws.
+	let activeQuotaProvider: string | undefined;
 
 	const refreshQuota = (ctx: ExtensionContext): void => {
 		const provider = resolveQuotaProvider(ctx.model?.provider);
 		const usingOAuth =
 			!!ctx.model && (ctx.modelRegistry.isUsingOAuth(ctx.model) ?? false);
+		// Synchronous only: the event ctx is live right now; capture the
+		// registry too, so nothing reads the ctx after an await below.
+		const modelRegistry = ctx.modelRegistry;
 		if (!provider || !usingOAuth) {
+			activeQuotaProvider = undefined;
 			if (quotaText) {
 				quotaText = "";
 				quotaProvider = undefined;
@@ -174,6 +186,7 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 			}
 			return;
 		}
+		activeQuotaProvider = provider;
 		const now = Date.now();
 		// A provider switch invalidates the cache: refetch immediately.
 		if (quotaProvider === provider && (now < quotaFreshUntil || quotaFetching)) return;
@@ -184,21 +197,17 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 		const seq = ++quotaFetchSeq;
 		const fetching = (async () => {
 			try {
-				const value = await fetchQuota(provider, ctx.modelRegistry);
+				const value = await fetchQuota(provider, modelRegistry);
 				// The provider or its auth may have changed while the request
-				// was in flight; an API-key model switch also retires the quota.
-				if (
-					resolveQuotaProvider(ctx.model?.provider) !== provider ||
-					!ctx.model ||
-					!(ctx.modelRegistry.isUsingOAuth(ctx.model) ?? false)
-				) {
-					return;
-				}
+				// was in flight; an API-key model switch also retires the quota
+				// (it clears activeQuotaProvider). The captured ctx is never
+				// read here.
+				if (activeQuotaProvider !== provider) return;
 				quotaText = formatQuotaText(label, value);
 				quotaProvider = provider;
 				quotaFreshUntil = Date.now() + QUOTA_CACHE_MS;
 			} catch (error) {
-				if (resolveQuotaProvider(ctx.model?.provider) !== provider) return;
+				if (activeQuotaProvider !== provider) return;
 				const code = error instanceof QuotaError ? error.code : "fetch";
 				quotaText = `${label}: <err:${code}>`;
 			} finally {
@@ -211,7 +220,11 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 
 	const refreshBalance = (ctx: ExtensionContext): void => {
 		const provider = resolveBalanceProvider(ctx.model?.provider);
+		// Synchronous only: the event ctx is live right now; capture the
+		// registry too, so nothing reads the ctx after an await below.
+		const modelRegistry = ctx.modelRegistry;
 		if (!provider) {
+			activeBalanceProvider = undefined;
 			if (balanceText) {
 				balanceText = "";
 				balanceValue = undefined;
@@ -220,6 +233,7 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 			}
 			return;
 		}
+		activeBalanceProvider = provider;
 		const now = Date.now();
 		// A provider switch invalidates the cache: refetch immediately.
 		if (balanceProvider === provider && (now < balanceFreshUntil || balanceFetching)) return;
@@ -230,15 +244,17 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 		const seq = ++balanceFetchSeq;
 		const fetching = (async () => {
 			try {
-				const value = await fetchBalance(provider, ctx.modelRegistry);
-				// The provider may have changed while the request was in flight.
-				if (resolveBalanceProvider(ctx.model?.provider) !== provider) return;
+				const value = await fetchBalance(provider, modelRegistry);
+				// The provider may have changed while the request was in
+				// flight; the captured ctx is never read here (it may be
+				// stale after a session replacement or reload).
+				if (activeBalanceProvider !== provider) return;
 				balanceText = formatBalanceText(label, value);
 				balanceValue = value ?? undefined;
 				balanceProvider = provider;
 				balanceFreshUntil = Date.now() + BALANCE_CACHE_MS;
 			} catch (error) {
-				if (resolveBalanceProvider(ctx.model?.provider) !== provider) return;
+				if (activeBalanceProvider !== provider) return;
 				const code = error instanceof BalanceError ? error.code : "fetch";
 				balanceText = `${label}: <err:${code}>`;
 				balanceValue = undefined;
@@ -347,10 +363,12 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 		balanceProvider = undefined;
 		balanceFreshUntil = 0;
 		balanceFetching = undefined;
+		activeBalanceProvider = undefined;
 		quotaText = "";
 		quotaProvider = undefined;
 		quotaFreshUntil = 0;
 		quotaFetching = undefined;
+		activeQuotaProvider = undefined;
 		if (ctx.mode !== "tui") return;
 
 		const configuration = resolveFooterConfiguration(ctx);
@@ -420,10 +438,12 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 		balanceProvider = undefined;
 		balanceFreshUntil = 0;
 		balanceFetching = undefined;
+		activeBalanceProvider = undefined;
 		quotaText = "";
 		quotaProvider = undefined;
 		quotaFreshUntil = 0;
 		quotaFetching = undefined;
+		activeQuotaProvider = undefined;
 	});
 
 	pi.registerCommand("set-currency", {
