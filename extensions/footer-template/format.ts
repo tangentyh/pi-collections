@@ -268,12 +268,12 @@ export function getFieldValues(
 /** The default footer template, mirroring pi's built-in footer layout plus the cumulative total-token count and the right-aligned account balance. */
 export const DEFAULT_FOOTER_TEMPLATE =
 	"{cwd}[ ({gitBranch})][ • {sessionName}][{balanceLabel}: {balanceStatus}]:right\n" +
-	"[↑{sessionInput}][ ↓{sessionOutput}][ R{sessionCacheRead}][ W{sessionCacheWrite}][ CH{latestCacheHitRate}%][ {cost} {subscription}] Σ{totalTokens} {percent}%/{contextWindow}[ {autoCompaction}][ ({contextTokens})][ • {xp}][ {modelProvider} {modelName} {thinkingLevel}]:right\n" +
+	"[↑{sessionInput}][ ↓{sessionOutput}][ R{sessionCacheRead}][ W{sessionCacheWrite}][ CH{latestCacheHitRate}%][ {cost} {subscription}] Σ{totalTokens} {percent}%/{contextWindow}[={contextTokens}][ {autoCompaction}][ • {xp}][ {modelProvider} {modelName} {thinkingLevel}]:right\n" +
 	"{extensionStatuses}";
 
 /** The notification format used when no custom template is configured; `{cost}` carries its own currency symbol. */
 export const DEFAULT_RUN_NOTIFICATION_TEMPLATE =
-	"{time} ({elapsedTime} elapsed/{idleTime} idle) — {tokensPerSecond} tok/s, {cost}, {output} out, {input} in, cache r/w {cacheRead}/{cacheWrite}, Σ{totalTokens}";
+	"{time} ({elapsedTime} elapsed/{idleTime} idle) — {tokensPerSecond} tok/s, {cost}, ↑{input} ↓{output} R{cacheRead} W{cacheWrite}, Σ{totalTokens}";
 
 /** Render the per-message throughput notification; an unset template falls back to the default format. */
 export function renderRunNotification(

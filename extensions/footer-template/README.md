@@ -12,36 +12,35 @@ trusted) or global settings. Project settings take precedence:
 ```json
 {
   "footerTemplate": {
-    "template": "{cwd}[ ({gitBranch})][ • {sessionName}][{balanceLabel}: {balanceStatus}]:right\n[↑{sessionInput}][ ↓{sessionOutput}][ R{sessionCacheRead}][ W{sessionCacheWrite}][ CH{latestCacheHitRate}%][ {cost} {subscription}] Σ{totalTokens} {percent}%/{contextWindow}[ {autoCompaction}][ ({contextTokens})][ • {xp}][ {modelProvider} {modelName} {thinkingLevel}]:right\n{extensionStatuses}",
-    "notificationTemplate": "{time} ({elapsedTime} elapsed/{idleTime} idle) — {tokensPerSecond} tok/s, {cost}, {output} out, {input} in, cache r/w {cacheRead}/{cacheWrite}, Σ{totalTokens}"
+    "template": "{cwd}[ ({gitBranch})][ • {sessionName}][{balanceLabel}: {balanceStatus}]:right\n[↑{sessionInput}][ ↓{sessionOutput}][ R{sessionCacheRead}][ W{sessionCacheWrite}][ CH{latestCacheHitRate}%][ {cost} {subscription}] Σ{totalTokens} {percent}%/{contextWindow}[={contextTokens}][ {autoCompaction}][ • {xp}][ {modelProvider} {modelName} {thinkingLevel}]:right\n{extensionStatuses}",
+    "notificationTemplate": "{time} ({elapsedTime} elapsed/{idleTime} idle) — {tokensPerSecond} tok/s, {cost}, ↑{input} ↓{output} R{cacheRead} W{cacheWrite}, Σ{totalTokens}"
   }
 }
 ```
 
-The default template — used when no template is configured — mirrors the
-layout of pi's built-in footer, with the account balance right-aligned on the
-first line, the absolute context-usage token count appended after the context
-usage, and the cumulative total-token count right after the session token
-statistics:
+The default template — used when no template is configured — is the
+`template` shown in the JSON example above. It mirrors the layout of pi's
+built-in footer, with the account balance right-aligned on the first line,
+the absolute context-usage token count appended right after the context
+usage (prefixed with `=`), and the cumulative total-token count right after
+the session token statistics.
+
+So the first line shows e.g. the DeepSeek balance right-aligned
+(`DeepSeek: ¥23.45`, in the configured display currency), and the stats line
+shows e.g.
 
 ```text
-{cwd}[ ({gitBranch})][ • {sessionName}][{balanceLabel}: {balanceStatus}]:right
-[↑{sessionInput}][ ↓{sessionOutput}][ R{sessionCacheRead}][ W{sessionCacheWrite}][ CH{latestCacheHitRate}%][ {cost} {subscription}] Σ{totalTokens} {percent}%/{contextWindow}[ {autoCompaction}][ ({contextTokens})][ • {xp}][ {modelProvider} {modelName} {thinkingLevel}]:right
-{extensionStatuses}
-```
-
-So the first line shows e.g. `~/project (main)   DeepSeek: $17.35` (or
-`Claude: 5h:23% 7d:41%` for the OAuth subscription providers, see [Account
-balance and provider quota](#account-balance-and-provider-quota)); the stats
-line shows e.g.
-
-```text
-↑1.2k ↓3M R1.2k W3M CH95.2% $1.23 (sub) Σ68,234 12.3%/200k (auto) (24,680) • xp   (anthropic) claude-3.5-sonnet • low
+~/project (main)                                                              DeepSeek: ¥23.45
+↑12k ↓9.2k R640k CH98.2% ¥0.08 Σ661,204 3.2%/1.0M=32,144    (deepseek) deepseek-v4-flash • max
 ```
 
 — the session token statistics, the cumulative total tokens, the context
 usage, and the model information right-aligned, exactly like the built-in
-stats line.
+stats line. The `¥` figures are the balance and the run cost in the
+configured display currency (see [Multi-currency cost display](#multi-currency-cost-display));
+for the OAuth subscription providers, the balance slot instead shows the
+quota windows, e.g. `Codex: 7d:4% cr:0` (see [Account balance and
+provider quota](#account-balance-and-provider-quota)).
 
 The bracketed sections in the default template are optional: each section is
 omitted when all of its fields are empty. Separators and other decorations
@@ -98,17 +97,17 @@ These fields provide the values shown by pi's built-in footer:
 | `{latestCacheHitRate}` | Latest assistant cache-hit percentage, without the `%` sign; empty when the session has no cache usage or the rate is unknown |
 | `{cost}` | Cumulative cost, converted to the configured display currency (see [Multi-currency cost display](#multi-currency-cost-display)); empty while nothing was spent |
 | `{subscription}` | `(sub)` when the active model's usage is subscription-backed (Kimi Coding, OAuth subscription plans); otherwise empty |
-| `{totalTokens}` | Cumulative total tokens used across the session (assistant messages, tool results, and compaction/branch-summary generation), as an exact count, e.g. `68,234` |
+| `{totalTokens}` | Cumulative total tokens used across the session (assistant messages, tool results, and compaction/branch-summary generation), as an exact count, e.g. `661,204` |
 | `{percent}` | Current context usage percentage, formatted to one decimal place, or `?` |
 | `{contextWindow}` | Context-window size in pi's compact token format |
 | `{autoCompaction}` | `(auto)` when automatic compaction is enabled; otherwise empty |
-| `{contextTokens}` | `24,680` — absolute number of context tokens currently used; empty when the usage percentage is unknown or no model context is available |
-| `{modelName}` | Model id, e.g. `claude-3.5-sonnet` (`no-model` without a model) |
+| `{contextTokens}` | `=32,144` — absolute number of context tokens currently used, prefixed with `=`; empty when the usage percentage is unknown or no model context is available |
+| `{modelName}` | Model id, e.g. `deepseek-v4-flash` (`no-model` without a model) |
 | `{thinkingLevel}` | `• low` — thinking level with a leading bullet; `• thinking off` when the level is `off`; empty when the model has no reasoning |
 | `{modelProvider}` | `(anthropic)` — provider in parentheses when multiple providers are available; otherwise empty |
 | `{extensionStatuses}` | Persistent extension statuses, sorted and joined on one line |
 | `{balanceLabel}` | Account-balance or quota label of the active provider, e.g. `DeepSeek` or `Claude`; empty when there is no status to show (see [Account balance and provider quota](#account-balance-and-provider-quota)) |
-| `{balanceStatus}` | Account-balance or quota status without the label: `$17.35`, `No balance`, `5h:23% 7d:41%`, or `<err:...>`; empty when there is no status to show |
+| `{balanceStatus}` | Account-balance or quota status without the label: `$17.35`, `No balance`, `7d:4% cr:0`, or `<err:...>`; empty when there is no status to show |
 | `{xp}` | `xp` when `PI_EXPERIMENTAL=1`, otherwise empty |
 
 Appending `:right` to any field name — or to a bracketed section —
@@ -136,8 +135,11 @@ Its text is configurable via `notificationTemplate` in the `footerTemplate`
 settings object; without it, this default format is used:
 
 ```text
-{time} ({elapsedTime} elapsed/{idleTime} idle) — {tokensPerSecond} tok/s, {cost}, {output} out, {input} in, cache r/w {cacheRead}/{cacheWrite}, Σ{totalTokens}
+{time} ({elapsedTime} elapsed/{idleTime} idle) — {tokensPerSecond} tok/s, {cost}, ↑{input} ↓{output} R{cacheRead} W{cacheWrite}, Σ{totalTokens}
 ```
+
+The run-stats token markers mirror the footer template's token statistics:
+`↑` input, `↓` output, `R` cache-read, `W` cache-write.
 
 Unlike the footer, the notification is rendered from the run-stats fields only
 (it fires before the footer data provider is available). Unknown placeholders
@@ -216,7 +218,7 @@ For the OAuth subscription providers, `{balanceStatus}` shows the rolling
 quota windows instead of a monetary balance, mirroring
 [pi-fancy-footer](https://github.com/mavam/pi-fancy-footer)'s provider-status
 widget and [pi-usage](https://github.com/Sreetej510/pi-extensions):
-`Claude: 5h:23% 7d:41%` — each window is its length (`5h`, `7d`) and the used
+`Codex: 7d:4% cr:0` — each window is its length (`5h`, `7d`) and the used
 percentage. A window at or above 75% used appends a reset countdown
 (`7d:86% ~3d4h`), and the Codex credit balance appears as `cr:12.34` when the
 account reports one. The supported quota providers and their endpoints:
