@@ -39,8 +39,8 @@ usage, and the model information right-aligned, exactly like the built-in
 stats line. The `¥` figures are the balance and the run cost in the
 configured display currency (see [Multi-currency cost display](#multi-currency-cost-display));
 for the OAuth subscription providers, the balance slot instead shows the
-quota windows, e.g. `Codex: 7d:4% cr:0` (see [Account balance and
-provider quota](#account-balance-and-provider-quota)).
+quota windows, e.g. `Codex: 5h:4% used 7d:12% used cr:0 left` (see [Account
+balance and provider quota](#account-balance-and-provider-quota)).
 
 The bracketed sections in the default template are optional: each section is
 omitted when all of its fields are empty. Separators and other decorations
@@ -107,7 +107,14 @@ These fields provide the values shown by pi's built-in footer:
 | `{modelProvider}` | `(anthropic)` — provider in parentheses when multiple providers are available; otherwise empty |
 | `{extensionStatuses}` | Persistent extension statuses, sorted and joined on one line |
 | `{balanceLabel}` | Account-balance or quota label of the active provider, e.g. `DeepSeek` or `Claude`; empty when there is no status to show (see [Account balance and provider quota](#account-balance-and-provider-quota)) |
-| `{balanceStatus}` | Account-balance or quota status without the label: `$17.35`, `No balance`, `7d:4% cr:0`, or `<err:...>`; empty when there is no status to show |
+| `{balanceStatus}` | Account-balance or quota status without the label: `$17.35`, `No balance`, `5h:23% used 7d:41% used cr:12.34 left`, or `<err:...>`; empty when there is no status to show |
+| `{quota5hUsed}` | Used percentage for the 5-hour quota window, e.g. `23%`; `—` when the window exists but usage is unknown; empty when unavailable |
+| `{quota5hRemaining}` | Remaining percentage for the 5-hour quota window, e.g. `77%`; `—` when usage is unknown; empty when unavailable |
+| `{quota5hReset}` | Reset countdown for the 5-hour quota window, e.g. `~2h`; empty when unavailable or expired |
+| `{quota7dUsed}` | Used percentage for the 7-day quota window, e.g. `41%`; `—` when the window exists but usage is unknown; empty when unavailable |
+| `{quota7dRemaining}` | Remaining percentage for the 7-day quota window, e.g. `59%`; `—` when usage is unknown; empty when unavailable |
+| `{quota7dReset}` | Reset countdown for the 7-day quota window, e.g. `~3d4h`; empty when unavailable or expired |
+| `{creditsRemaining}` | Remaining/available Codex credits, e.g. `12.34`, without a unit or prefix; empty for providers without credits |
 | `{xp}` | `xp` when `PI_EXPERIMENTAL=1`, otherwise empty |
 
 Appending `:right` to any field name — or to a bracketed section —
@@ -218,15 +225,30 @@ For the OAuth subscription providers, `{balanceStatus}` shows the rolling
 quota windows instead of a monetary balance, mirroring
 [pi-fancy-footer](https://github.com/mavam/pi-fancy-footer)'s provider-status
 widget and [pi-usage](https://github.com/Sreetej510/pi-extensions):
-`Codex: 7d:4% cr:0` — each window is its length (`5h`, `7d`) and the used
-percentage. A window at or above 75% used appends a reset countdown
-(`7d:86% ~3d4h`), and the Codex credit balance appears as `cr:12.34` when the
-account reports one. The supported quota providers and their endpoints:
+`Codex: 5h:4% used 7d:12% used cr:0 left` — each window is its length (`5h`,
+`7d`) and the **used** percentage. A window at or above 75% used appends a
+reset countdown (`7d:86% used ~3d4h`), and the Codex credit balance appears as
+`cr:12.34 left` when the account reports one. The supported quota providers
+and their endpoints:
 
 | Provider id | Label | Endpoint | Windows |
 | --- | --- | --- | --- |
 | `openai-codex` | Codex | `GET https://chatgpt.com/backend-api/wham/usage` | 5h, 7d |
 | `anthropic` | Claude | `GET https://api.anthropic.com/api/oauth/usage` | 5h, 7d |
+
+For custom layouts, the quota data is also split into explicit fields:
+`{quota5hUsed}`, `{quota5hRemaining}`, `{quota5hReset}`, `{quota7dUsed}`,
+`{quota7dRemaining}`, `{quota7dReset}`, and `{creditsRemaining}`. For example:
+
+```text
+{balanceLabel}: [5h {quota5hUsed} used ({quota5hRemaining} left)][ 7d {quota7dUsed} used ({quota7dRemaining} left)][ credits: {creditsRemaining} left]
+```
+
+The used and remaining fields include the `%` sign. Reset fields contain a
+countdown such as `~2h` when available, and credit fields represent the
+remaining/available balance rather than credits consumed. These fields are
+empty when their window or credit balance is unavailable; an existing window
+with unknown usage uses `—` for its percentages.
 
 Quota status is fetched only while the active model uses OAuth auth for one of
 the quota providers (API-key Claude models have no subscription quota), using

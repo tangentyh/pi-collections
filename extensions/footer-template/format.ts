@@ -7,7 +7,8 @@ import type {
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { BALANCE_PROVIDERS } from "./balance.js";
 import { CURRENCIES, ccyRate, formatCost } from "./currency.js";
-import { QUOTA_PROVIDERS } from "./quota.js";
+import { getQuotaTemplateFields, QUOTA_PROVIDERS } from "./quota.js";
+import type { QuotaValue } from "./quota.js";
 import type { RunStats, SessionUsage, UsageTotals } from "./types.js";
 
 const FIELD_PATTERN = /\{([A-Za-z][A-Za-z0-9_]*)(?::right)?\}/g;
@@ -103,7 +104,9 @@ export function getRunStatsFields(
  * display currency, e.g. `DeepSeek: €15.23`. When the conversion is not
  * possible (no cached rate for a non-USD display currency), the balance
  * falls back to its native currency formatting (`fallback`). The amount is
- * always shown with two decimals, keeping the documented format.
+ * always shown with two decimals, keeping the documented format. OAuth quota
+ * providers use an explicit compact status such as `5h:23% used 7d:41% used`;
+ * structured quota fields are provided separately below.
  */
 function formatBalanceField(
 	label: string,
@@ -159,11 +162,14 @@ export interface FooterFieldOptions {
 	balanceProvider: string | undefined;
 	/**
 	 * Provider quota status for OAuth subscription providers (Codex, Claude):
-	 * "", "<Label>: 5h:23% 7d:41%", or "<Label>: <err:...>". Non-empty only
-	 * while the active model's provider reports quota windows; it takes
-	 * precedence over the monetary balance in `{balanceLabel}/{balanceStatus}`.
+	 * "", "<Label>: 5h:23% used 7d:41% used", or "<Label>: <err:...>".
+	 * Non-empty only while the active model's provider reports quota windows;
+	 * it takes precedence over the monetary balance in
+	 * `{balanceLabel}/{balanceStatus}`.
 	 */
 	quotaText: string;
+	/** The structured quota data behind the explicit quota template fields. */
+	quotaValue: QuotaValue | undefined;
 	/** The provider key the quota status belongs to (e.g. "openai-codex", "anthropic"). */
 	quotaProvider: string | undefined;
 }
@@ -222,6 +228,7 @@ export function getFieldValues(
 			? compositeBalance.slice(balanceLabel.length + 2)
 			: compositeBalance
 		: "";
+	const quotaFields = getQuotaTemplateFields(options.quotaValue);
 
 	return {
 		...getRunStatsFields(runStats, options.costCurrency, options.fxRates),
@@ -261,6 +268,7 @@ export function getFieldValues(
 		extensionStatuses: formatExtensionStatuses(footerData),
 		balanceLabel,
 		balanceStatus,
+		...quotaFields,
 		xp: process.env.PI_EXPERIMENTAL === "1" ? "xp" : "",
 	};
 }

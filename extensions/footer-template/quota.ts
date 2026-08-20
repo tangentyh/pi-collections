@@ -1,14 +1,15 @@
 /**
- * Provider quota status for the `{balanceLabel}/{balanceStatus}` fields.
+ * Provider quota status for the `{balanceLabel}/{balanceStatus}` fields and
+ * the structured quota fields.
  *
  * Ported from pi-fancy-footer's provider-status widget and pi-usage: the
  * OAuth subscription providers (OpenAI Codex, Anthropic) report rolling quota
- * windows on their usage endpoints, rendered as `<Label>: 5h:23% 7d:41%` —
- * window length plus used percentage — with a reset countdown appended to
- * windows at or above 75% used, and the Codex credit balance when the account
- * reports one. Auth goes through pi's model registry like the account
- * balance: for these providers `getApiKeyForProvider` resolves the OAuth
- * access token, with pi-managed token refresh and the same sandbox-aware
+ * windows on their usage endpoints, rendered as `<Label>: 5h:23% used
+ * 7d:41% used` — window length plus used percentage — with a reset countdown
+ * appended to windows at or above 75% used, and the Codex credit balance when
+ * the account reports one. Auth goes through pi's model registry like the
+ * account balance: for these providers `getApiKeyForProvider` resolves the
+ * OAuth access token, with pi-managed token refresh and the same sandbox-aware
  * proxy handling.
  */
 
@@ -40,14 +41,32 @@ export interface QuotaWindow {
 /** Quota status of a provider: its rolling windows plus an optional credit balance. */
 export interface QuotaValue {
 	windows: QuotaWindow[];
-	/** Raw credit-balance string (e.g. `12.34`) when the account reports one. */
+	/** Raw remaining/available credit-balance string (e.g. `12.34`). */
 	credits?: string;
+}
+
+/** Explicit quota values available to footer templates. */
+export interface QuotaTemplateFields {
+	/** Used percentage for the five-hour window, e.g. `23%`. */
+	quota5hUsed: string;
+	/** Remaining percentage for the five-hour window, e.g. `77%`. */
+	quota5hRemaining: string;
+	/** Reset countdown for the five-hour window, e.g. `~2h`. */
+	quota5hReset: string;
+	/** Used percentage for the seven-day window, e.g. `41%`. */
+	quota7dUsed: string;
+	/** Remaining percentage for the seven-day window, e.g. `59%`. */
+	quota7dRemaining: string;
+	/** Reset countdown for the seven-day window, e.g. `~3d4h`. */
+	quota7dReset: string;
+	/** Remaining/available Codex credits, without a unit or prefix. */
+	creditsRemaining: string;
 }
 
 interface QuotaProviderConfig {
 	/** Usage endpoint, called with `Authorization: Bearer <access token>`. */
 	url: string;
-	/** Display name used as the field label, e.g. `Claude: 5h:23% 7d:41%`. */
+	/** Display name used as the field label, e.g. `Claude: 5h:23% used 7d:41% used`. */
 	label: string;
 	/** Extract a `QuotaValue` from a 200 response; undefined = no quota reported. */
 	parse: (data: any) => QuotaValue | undefined;
@@ -150,17 +169,17 @@ const RESET_COUNTDOWN_MIN_PERCENT = 75;
 
 /**
  * Render the quota status like pi-fancy-footer's provider-status text, e.g.
- * `Codex: 5h:12% 7d:34%`; a window at or above 75% used gets a reset
- * countdown (`7d:86% ~2h`), and the Codex credit balance appends as
- * `cr:12.34` when the account reports one. `<Label>: No quota` when the
- * provider reports neither windows nor credits.
+ * `Codex: 5h:12% used 7d:34% used`; a window at or above 75% used gets a
+ * reset countdown (`7d:86% used ~2h`), and the Codex credit balance appends
+ * as `cr:12.34 left` when the account reports one. `<Label>: No quota` when
+ * the provider reports neither windows nor credits.
  */
 export function formatQuotaText(label: string, value: QuotaValue | undefined, nowMs = Date.now()): string {
 	if (!value) return `${label}: No quota`;
 	const parts = value.windows.map((window) => {
 		let part = window.usageUnknown
 			? `${window.label}:—`
-			: `${window.label}:${formatPercent(window.usedPercent)}`;
+			: `${window.label}:${formatPercent(window.usedPercent)} used`;
 		if (
 			!window.usageUnknown &&
 			window.resetAt !== undefined &&
@@ -171,9 +190,45 @@ export function formatQuotaText(label: string, value: QuotaValue | undefined, no
 		}
 		return part;
 	});
-	if (value.credits !== undefined) parts.push(`cr:${value.credits}`);
+	if (value.credits !== undefined) parts.push(`cr:${value.credits} left`);
 	if (parts.length === 0) return `${label}: No quota`;
 	return `${label}: ${parts.join(" ")}`;
+}
+
+/**
+ * Split quota data into explicit template fields. Unlike the compact
+ * `{balanceStatus}` rendering, these fields expose both used and remaining
+ * percentages and make the credit balance's meaning explicit in its name.
+ * Reset countdowns are available whenever the provider reports a reset time;
+ * the compact status applies its 75%-used threshold separately.
+ */
+export function getQuotaTemplateFields(
+	value: QuotaValue | undefined,
+	nowMs = Date.now(),
+): QuotaTemplateFields {
+	const fiveHour = value?.windows.find((window) => window.label === "5h");
+	const sevenDay = value?.windows.find((window) => window.label === "7d");
+	return {
+		quota5hUsed: formatWindowPercent(fiveHour, "used"),
+		quota5hRemaining: formatWindowPercent(fiveHour, "remaining"),
+		quota5hReset: formatWindowReset(fiveHour, nowMs),
+		quota7dUsed: formatWindowPercent(sevenDay, "used"),
+		quota7dRemaining: formatWindowPercent(sevenDay, "remaining"),
+		quota7dReset: formatWindowReset(sevenDay, nowMs),
+		creditsRemaining: value?.credits ?? "",
+	};
+}
+
+function formatWindowPercent(window: QuotaWindow | undefined, kind: "used" | "remaining"): string {
+	if (!window) return "";
+	if (window.usageUnknown) return "—";
+	const usedPercent = clampPercent(window.usedPercent);
+	return formatPercent(kind === "used" ? usedPercent : 100 - usedPercent);
+}
+
+function formatWindowReset(window: QuotaWindow | undefined, nowMs: number): string {
+	if (!window?.resetAt) return "";
+	return formatResetCountdown(window.resetAt, nowMs);
 }
 
 function formatPercent(value: number): string {

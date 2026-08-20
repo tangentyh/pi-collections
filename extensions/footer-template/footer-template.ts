@@ -17,6 +17,7 @@ import {
 	formatQuotaText,
 	resolveQuotaProvider,
 } from "./quota.js";
+import type { QuotaValue } from "./quota.js";
 import { CURRENCIES, CURRENCY_LIST, getFxRates, readCostCurrency, refreshFxIfStale, writeCostCurrency } from "./currency.js";
 import {
 	DEFAULT_FOOTER_TEMPLATE,
@@ -153,13 +154,14 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 	// for the OAuth
 	// subscription providers (openai-codex, anthropic), mirroring
 	// pi-fancy-footer's provider-status widget and pi-usage: the rolling quota
-	// windows render as `<Label>: 5h:23% 7d:41%` with a reset countdown for
+	// windows render as `<Label>: 5h:23% used 7d:41% used` with a reset countdown for
 	// windows at or above 75% used. Quota is only fetched while the active
 	// model uses OAuth (API-key models have no subscription quota). Refreshed
 	// at most once per cache window (3 min, like pi-usage) on the same events
 	// as the balance; fetch errors are not cached and render as
 	// `<Label>: <err:code>` until the next refresh.
 	let quotaText = "";
+	let quotaValue: QuotaValue | undefined;
 	let quotaProvider: string | undefined;
 	let quotaFreshUntil = 0;
 	let quotaFetching: Promise<void> | undefined;
@@ -179,8 +181,9 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 		const modelRegistry = ctx.modelRegistry;
 		if (!provider || !usingOAuth) {
 			activeQuotaProvider = undefined;
-			if (quotaText) {
+			if (quotaText || quotaValue) {
 				quotaText = "";
+				quotaValue = undefined;
 				quotaProvider = undefined;
 				requestFooterRender?.();
 			}
@@ -188,6 +191,15 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 		}
 		activeQuotaProvider = provider;
 		const now = Date.now();
+		// A provider switch invalidates the old value immediately so a stale
+		// provider's fields are never shown while the replacement is fetched.
+		if (quotaProvider !== undefined && quotaProvider !== provider) {
+			quotaText = "";
+			quotaValue = undefined;
+			quotaProvider = undefined;
+			quotaFreshUntil = 0;
+			requestFooterRender?.();
+		}
 		// A provider switch invalidates the cache: refetch immediately.
 		if (quotaProvider === provider && (now < quotaFreshUntil || quotaFetching)) return;
 		const label = QUOTA_PROVIDERS[provider].label;
@@ -204,12 +216,16 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 				// read here.
 				if (activeQuotaProvider !== provider) return;
 				quotaText = formatQuotaText(label, value);
+				quotaValue = value;
 				quotaProvider = provider;
 				quotaFreshUntil = Date.now() + QUOTA_CACHE_MS;
 			} catch (error) {
 				if (activeQuotaProvider !== provider) return;
 				const code = error instanceof QuotaError ? error.code : "fetch";
 				quotaText = `${label}: <err:${code}>`;
+				quotaValue = undefined;
+				quotaProvider = provider;
+				quotaFreshUntil = 0;
 			} finally {
 				if (seq === quotaFetchSeq) quotaFetching = undefined;
 				requestFooterRender?.();
@@ -365,6 +381,7 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 		balanceFetching = undefined;
 		activeBalanceProvider = undefined;
 		quotaText = "";
+		quotaValue = undefined;
 		quotaProvider = undefined;
 		quotaFreshUntil = 0;
 		quotaFetching = undefined;
@@ -408,6 +425,7 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 							balanceValue,
 							balanceProvider,
 							quotaText,
+							quotaValue,
 							quotaProvider,
 						},
 					);
@@ -440,6 +458,7 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 		balanceFetching = undefined;
 		activeBalanceProvider = undefined;
 		quotaText = "";
+		quotaValue = undefined;
 		quotaProvider = undefined;
 		quotaFreshUntil = 0;
 		quotaFetching = undefined;
