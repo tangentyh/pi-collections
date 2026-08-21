@@ -41,6 +41,11 @@ const RATES: Record<string, { peak: DeepSeekRates; offPeak: DeepSeekRates }> = {
 		peak: { input: 0.44, output: 1.32, cacheRead: 0.014, cacheWrite: 0 },
 		offPeak: { input: 0.22, output: 0.66, cacheRead: 0.007, cacheWrite: 0 },
 	},
+	// Same rates as deepseek-v4-flash; images are billed as input tokens.
+	"deepseek-v4-flash-vision-exp": {
+		peak: { input: 0.44, output: 1.32, cacheRead: 0.014, cacheWrite: 0 },
+		offPeak: { input: 0.22, output: 0.66, cacheRead: 0.007, cacheWrite: 0 },
+	},
 	"deepseek-v4-pro": {
 		peak: { input: 1.32, output: 3.96, cacheRead: 0.044, cacheWrite: 0 },
 		offPeak: { input: 0.66, output: 1.98, cacheRead: 0.022, cacheWrite: 0 },

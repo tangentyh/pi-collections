@@ -33,6 +33,8 @@ Off-peak rates are exactly half of peak. DeepSeek does not charge for cache writ
 | deepseek-v4-flash | off-peak | $0.22 /M | $0.66 /M | $0.007 /M | $0 |
 | deepseek-v4-pro | peak | $1.32 /M | $3.96 /M | $0.044 /M | $0 |
 | deepseek-v4-pro | off-peak | $0.66 /M | $1.98 /M | $0.022 /M | $0 |
+| deepseek-v4-flash-vision-exp | peak | $0.44 /M | $1.32 /M | $0.014 /M | $0 |
+| deepseek-v4-flash-vision-exp | off-peak | $0.22 /M | $0.66 /M | $0.007 /M | $0 |
 
 ## Install
 
@@ -97,7 +99,8 @@ DeepSeek publishes them in UTC and your local timezone must not affect the tier.
 ## Compatibility
 
 - pi 0.84+ (uses the `message_end` extension event and `ctx.ui` status API).
-- Tested with `deepseek-v4-flash` and `deepseek-v4-pro` on the official DeepSeek API.
+- Tested with `deepseek-v4-flash`, `deepseek-v4-pro`, and `deepseek-v4-flash-vision-exp`
+  on the official DeepSeek API.
 - Cost correctness is display-side: like all pi cost accounting, it is an estimate
   based on reported usage tokens and published rates, not an invoice.
 
