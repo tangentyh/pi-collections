@@ -50,6 +50,11 @@ export function formatCount(count: number): string {
 	return (Number.isFinite(count) ? Math.max(0, count) : 0).toLocaleString();
 }
 
+/** Format a positive count for an optional template field; zero is omitted. */
+function formatPositiveCount(count: number | null | undefined): string {
+	return count === null || count === undefined || !Number.isFinite(count) || count <= 0 ? "" : formatCount(count);
+}
+
 export function formatCwdForFooter(cwd: string, home: string | undefined): string {
 	if (!home) return cwd;
 
@@ -246,9 +251,7 @@ export function getFieldValues(
 	// The absolute token count behind the usage percentage (the exact
 	// estimateContextTokens result, not derived from the rounded percent),
 	// or empty when the estimate is unknown (or no model context is available).
-	const contextUsageTokens = contextUsage?.tokens;
-	const contextTokens =
-		contextUsageTokens === null || contextUsageTokens === undefined ? "" : formatCount(contextUsageTokens);
+	const contextTokens = formatPositiveCount(contextUsage?.tokens);
 	const usingSubscription = isUsingSubscription(ctx);
 	const branch = footerData.getGitBranch();
 	const sessionName = ctx.sessionManager.getSessionName();
@@ -312,7 +315,7 @@ export function getFieldValues(
 		cost: formatCost(totals.cost, costCurrency, options.fxRates),
 		// Overrides the run-stats totalTokens: cumulative session total, so it
 		// can sit next to the session token fields.
-		totalTokens: formatCount(totals.totalTokens),
+		totalTokens: formatPositiveCount(totals.totalTokens),
 		sessionInput: totals.input > 0 ? formatTokens(totals.input) : "",
 		sessionOutput: totals.output > 0 ? formatTokens(totals.output) : "",
 		sessionCacheRead: totals.cacheRead > 0 ? formatTokens(totals.cacheRead) : "",

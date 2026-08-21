@@ -103,11 +103,11 @@ These fields provide the values shown by pi's built-in footer:
 | `{latestCacheHitRate}` | Latest assistant cache-hit percentage, without the `%` sign; empty when the session has no cache usage or the rate is unknown |
 | `{cost}` | Cumulative cost, converted to the configured display currency (see [Multi-currency cost display](#multi-currency-cost-display)); includes zero when nothing was spent |
 | `{subscription}` | `(sub)` when the active model's usage is subscription-backed (Kimi Coding, OAuth subscription plans); otherwise empty |
-| `{totalTokens}` | Cumulative total tokens used across the session (assistant messages, tool results, and compaction/branch-summary generation), as an exact count, e.g. `661,204` |
+| `{totalTokens}` | Cumulative total tokens used across the session (assistant messages, tool results, and compaction/branch-summary generation), as an exact count, e.g. `661,204`; empty when zero |
 | `{percent}` | Current context usage percentage, formatted to one decimal place, or `?` |
 | `{contextWindow}` | Context-window size in pi's compact token format |
 | `{autoCompaction}` | `(auto)` when automatic compaction is enabled; otherwise empty |
-| `{contextTokens}` | `=32,144` — absolute number of context tokens currently used, prefixed with `=`; empty when the usage percentage is unknown or no model context is available |
+| `{contextTokens}` | `=32,144` — absolute number of context tokens currently used, prefixed with `=`; empty when zero, when the usage percentage is unknown, or when no model context is available |
 | `{modelName}` | Model id, e.g. `deepseek-v4-flash` (`no-model` without a model) |
 | `{thinkingLevel}` | `• low` — thinking level with a leading bullet; `• thinking off` when the level is `off`; empty when the model has no reasoning |
 | `{modelProvider}` | `(anthropic)` — provider in parentheses when multiple providers are available; otherwise empty |
