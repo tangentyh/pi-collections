@@ -51,7 +51,19 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           tag="${GITHUB_REF_NAME}"
-          notes="$(git tag -l --format='%(contents)' "$tag")"
+          version="${tag#*@}"
+          dir="${{ steps.pkg.outputs.dir }}"
+          # Preferred notes: the version's section from the extension's
+          # Keep a Changelog CHANGELOG.md
+          notes="$(awk -v ver="$version" '
+            index($0, "## [" ver "]") == 1 { found = 1; next }
+            found && /^## / { exit }
+            found { print }
+          ' "$dir/CHANGELOG.md" | sed -e '/./,$!d')"
+          # Fall back to the annotated tag message, then to generated notes
+          if [ -z "$notes" ]; then
+            notes="$(git tag -l --format='%(contents)' "$tag")"
+          fi
           if [ -n "$notes" ]; then
             gh release create "$tag" --verify-tag --title "$tag" --notes "$notes"
           else

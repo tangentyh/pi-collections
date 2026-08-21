@@ -81,8 +81,9 @@ the matching extension to npm with provenance via **npm trusted publishing
 (OIDC)** — no token secret is involved. The workflow resolves the extension
 directory by matching the tag against every `extensions/*/package.json`
 `name@version` and fails loudly on mismatch. After a successful publish it
-also creates a GitHub Release for the tag, using the annotated tag message
-as the release notes (GitHub-generated notes as fallback).
+also creates a GitHub Release for the tag, using the version's section from
+the extension's `CHANGELOG.md` as the release notes (annotated tag message,
+then GitHub-generated notes, as fallbacks).
 
 Release flow:
 
