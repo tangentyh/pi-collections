@@ -1,0 +1,44 @@
+name: Publish
+
+on:
+  push:
+    tags: ["pi-*@*"]
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # npm trusted publishing (OIDC) + provenance
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # Trusted publishing requires npm >= 11.5.1; Node 22 bundles an older npm
+      - run: npm install -g npm@latest
+
+      - name: Resolve package from tag
+        id: pkg
+        run: |
+          tag="${GITHUB_REF_NAME#refs/tags/}"
+          dir=""
+          for d in extensions/*/; do
+            p=$(node -p "const p=require('./$d/package.json'); p.name+'@'+p.version")
+            if [ "$p" = "$tag" ]; then dir="$d"; break; fi
+          done
+          if [ -z "$dir" ]; then
+            echo "::error::No extension matches tag $tag (expected name@version from its package.json)"
+            exit 1
+          fi
+          echo "dir=$dir" >> "$GITHUB_OUTPUT"
+          echo "Publishing $tag from $dir"
+
+      - run: npm ci
+
+      - run: npm publish --provenance
+        working-directory: ${{ steps.pkg.outputs.dir }}
