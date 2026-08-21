@@ -12,13 +12,16 @@ import { getQuotaTemplateFields, QUOTA_PROVIDERS } from "./quota.js";
 import type { QuotaValue } from "./quota.js";
 import type { RunStats, SessionUsage, UsageTotals } from "./types.js";
 
-const FIELD_PATTERN = /\{([A-Za-z][A-Za-z0-9_]*)(?::right)?\}/g;
+const FIELD_PATTERN = /\{([A-Za-z][A-Za-z0-9_]*)\}/g;
 // Square-bracketed sections are omitted when all contained fields are empty
 // (groups cannot nest).
 const OPTIONAL_GROUP_PATTERN = /\[([^\[\]\r\n]*)\]/g;
-// The marker that splits a line: everything after the first ":right" outside
-// an optional section is right-aligned as one unit.
-const RIGHT_ALIGN_MARKER = ":right";
+// The marker that splits a line: everything after the first "{:right}" outside
+// an optional section is right-aligned as one unit. The bare ":right" form is
+// still accepted (deprecated); "{:right}" is tried first so it is consumed
+// whole, and inserting anything inside the braces (e.g. "{ :right}") escapes it.
+const RIGHT_ALIGN_MARKER = "{:right}";
+const LEGACY_RIGHT_ALIGN_MARKER = ":right";
 
 export function formatElapsedTime(elapsedSeconds: number): string {
 	const secondsValue = Number.isFinite(elapsedSeconds) ? Math.max(0, elapsedSeconds) : 0;
@@ -343,8 +346,8 @@ export function getFieldValues(
 
 /** The default footer template, mirroring pi's built-in footer layout plus the cumulative total-token count and the right-aligned account balance (with its session delta) / quota-window breakdown. */
 export const DEFAULT_FOOTER_TEMPLATE =
-	"{cwd}[ ({gitBranch})][ • {sessionName}]:right[{balanceLabel}: {balanceStatus}][ Δ{balanceDelta}][ 5h {quota5hUsed} used ({quota5hReset})][ 7d {quota7dUsed} used ({quota7dReset})][ credits: {creditsRemaining}]\n" +
-	"[↑{sessionInput}][ ↓{sessionOutput}][ R{sessionCacheRead}][ W{sessionCacheWrite}][ CH{latestCacheHitRate}%][ {cost} {subscription}] Σ{totalTokens} {percent}%/{contextWindow}[={contextTokens}][ {autoCompaction}][ • {xp}]:right[ {modelProvider} {modelName} {thinkingLevel}]\n" +
+	"{cwd}[ ({gitBranch})][ • {sessionName}]{:right}[{balanceLabel}: {balanceStatus}][ Δ{balanceDelta}][ 5h {quota5hUsed} used ({quota5hReset})][ 7d {quota7dUsed} used ({quota7dReset})][ credits: {creditsRemaining}]\n" +
+	"[↑{sessionInput}][ ↓{sessionOutput}][ R{sessionCacheRead}][ W{sessionCacheWrite}][ CH{latestCacheHitRate}%][ {cost} {subscription}] Σ{totalTokens} {percent}%/{contextWindow}[={contextTokens}][ {autoCompaction}][ • {xp}]{:right}[ {modelProvider} {modelName} {thinkingLevel}]\n" +
 	"{extensionStatuses}";
 
 /** The notification format used when no custom template is configured; `{cost}` carries its own currency symbol. */
@@ -414,11 +417,11 @@ function expandTemplate(template: string, fields: Record<string, string>): strin
 }
 
 /**
- * Expand one template line. The first `:right` marker outside an optional
+ * Expand one template line. The first `{:right}` marker outside an optional
  * section splits the line: the text before it stays left-aligned, and
  * everything after it — fields, optional sections, or literal text — is
  * right-aligned as one unit, e.g.
- * `{cwd}[ ({gitBranch})]:right[{balanceLabel}: {balanceStatus}]`.
+ * `{cwd}[ ({gitBranch})]{:right}[{balanceLabel}: {balanceStatus}]`.
  */
 function expandLine(
 	line: string,
@@ -428,12 +431,12 @@ function expandLine(
 	// a balance section with nothing to show) leaves the line as its left
 	// part instead of padding it with trailing spaces.
 	const expandedOptionalGroups = expandOptionalGroups(line, fields);
-	const markerIndex = findRightAlignMarker(expandedOptionalGroups);
-	if (markerIndex === -1) {
+	const marker = findRightAlignMarker(expandedOptionalGroups);
+	if (marker === undefined) {
 		return { text: expandTemplate(expandedOptionalGroups, fields), right: undefined };
 	}
-	const markerEnd = markerIndex + RIGHT_ALIGN_MARKER.length;
-	const left = expandTemplate(expandedOptionalGroups.slice(0, markerIndex), fields);
+	const markerEnd = marker.index + marker.length;
+	const left = expandTemplate(expandedOptionalGroups.slice(0, marker.index), fields);
 	const right = expandTemplate(expandedOptionalGroups.slice(markerEnd), fields);
 	// An empty right side leaves the line as its left part instead of
 	// padding it with trailing spaces.
@@ -441,18 +444,24 @@ function expandLine(
 }
 
 /**
- * Index of the first `:right` marker outside an optional section, or -1.
- * A marker inside `[ ... ]` is literal text, like any other decoration.
+ * Index and length of the first `{:right}` marker (or the deprecated bare
+ * `:right` form) outside an optional section, or undefined. `{:right}` is
+ * tried first at each position so it is consumed whole. A marker inside
+ * `[ ... ]` is literal text, like any other decoration.
  */
-function findRightAlignMarker(line: string): number {
+function findRightAlignMarker(line: string): { index: number; length: number } | undefined {
 	let inSection = false;
 	for (let i = 0; i < line.length; i++) {
 		const ch = line[i];
 		if (ch === "[") inSection = true;
 		else if (ch === "]") inSection = false;
-		else if (!inSection && line.startsWith(RIGHT_ALIGN_MARKER, i)) return i;
+		else if (!inSection && line.startsWith(RIGHT_ALIGN_MARKER, i)) {
+			return { index: i, length: RIGHT_ALIGN_MARKER.length };
+		} else if (!inSection && line.startsWith(LEGACY_RIGHT_ALIGN_MARKER, i)) {
+			return { index: i, length: LEGACY_RIGHT_ALIGN_MARKER.length };
+		}
 	}
-	return -1;
+	return undefined;
 }
 
 /**

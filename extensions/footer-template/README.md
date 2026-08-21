@@ -12,7 +12,7 @@ trusted) or global settings. Project settings take precedence:
 ```json
 {
   "footerTemplate": {
-    "template": "{cwd}[ ({gitBranch})][ • {sessionName}]:right[{balanceLabel}: {balanceStatus}][ Δ{balanceDelta}][ 5h {quota5hUsed} used ({quota5hReset})][ 7d {quota7dUsed} used ({quota7dReset})][ credits: {creditsRemaining}]\n[↑{sessionInput}][ ↓{sessionOutput}][ R{sessionCacheRead}][ W{sessionCacheWrite}][ CH{latestCacheHitRate}%][ {cost} {subscription}] Σ{totalTokens} {percent}%/{contextWindow}[={contextTokens}][ {autoCompaction}][ • {xp}]:right[ {modelProvider} {modelName} {thinkingLevel}]\n{extensionStatuses}",
+    "template": "{cwd}[ ({gitBranch})][ • {sessionName}]{:right}[{balanceLabel}: {balanceStatus}][ Δ{balanceDelta}][ 5h {quota5hUsed} used ({quota5hReset})][ 7d {quota7dUsed} used ({quota7dReset})][ credits: {creditsRemaining}]\n[↑{sessionInput}][ ↓{sessionOutput}][ R{sessionCacheRead}][ W{sessionCacheWrite}][ CH{latestCacheHitRate}%][ {cost} {subscription}] Σ{totalTokens} {percent}%/{contextWindow}[={contextTokens}][ {autoCompaction}][ • {xp}]{:right}[ {modelProvider} {modelName} {thinkingLevel}]\n{extensionStatuses}",
     "notificationTemplate": "{time} ({elapsedTime} elapsed/{idleTime} idle) — {tokensPerSecond} tok/s, {cost}, ↑{input} ↓{output} R{cacheRead} W{cacheWrite}, Σ{totalTokens}",
     "costCurrency": "auto"
   }
@@ -35,7 +35,7 @@ So the first line shows e.g. the DeepSeek balance right-aligned
 stats line shows e.g.
 
 ```text
-~/project (main)                                                          DeepSeek: ¥23.45 Δ+¥2.15
+~/project (main)                                                      DeepSeek: ¥23.45 Δ+¥2.15
 ↑12k ↓9.2k R640k CH98.2% ¥0.08 Σ661,204 3.2%/1.0M=32,144    (deepseek) deepseek-v4-flash • max
 ```
 
@@ -52,7 +52,7 @@ The bracketed sections in the default template are optional: each section is
 omitted when all of its fields are empty. Separators and other decorations
 therefore live in the string template, while fields contain only their values.
 An empty field also removes one adjacent whitespace run, so separators around
-dropped values leave no stray spaces inside a kept section. The `:right`
+dropped values leave no stray spaces inside a kept section. The `{:right}`
 marker splits its line, pushing everything after it to the right edge: this
 is how the balance lands on the right side of the first line and
 the model information on the right side of the stats line, just like the
@@ -124,12 +124,15 @@ These fields provide the values shown by pi's built-in footer:
 | `{creditsRemaining}` | Remaining/available Codex credits, e.g. `12.34`, without a unit or prefix; empty for providers without credits |
 | `{xp}` | `xp` when `PI_EXPERIMENTAL=1`, otherwise empty |
 
-A `:right` marker splits its line: the text before it stays left-aligned,
+A `{:right}` marker splits its line: the text before it stays left-aligned,
 and everything after it — fields, optional sections, or literal text — is
 pushed to the right edge as one unit. The marker sits at the boundary, e.g.
-`{cwd}[ ({gitBranch})][ • {sessionName}]:right[{balanceLabel}: {balanceStatus}][ Δ{balanceDelta}]`
-or `:right{modelName}` to right-align a single field. Only the first marker
+`{cwd}[ ({gitBranch})][ • {sessionName}]{:right}[{balanceLabel}: {balanceStatus}][ Δ{balanceDelta}]`
+or `{:right}{modelName}` to right-align a single field. Only the first marker
 outside an optional section splits the line; later ones stay literal text.
+The deprecated bare `:right` form is still accepted (the brace form is tried
+first, so it is never split in two); inserting anything inside the braces,
+e.g. `{ :right}`, renders literal text.
 The right side is pushed to the edge with at least two spaces of separation,
 and overlong lines are truncated like the built-in stats line (left part
 first, then the right part).
