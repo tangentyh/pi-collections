@@ -10,7 +10,7 @@ Conventions for AI agents and humans working in this repo. The repo is a
   - `package.json` with a `pi` manifest (e.g. `"pi": {"extensions": ["./<name>.ts"]}`),
     the `pi-package` keyword, and a `files` field listing the entry, README, LICENSE
   - `<name>.ts` — semantic entry file (same name as the directory)
-  - `README.md`, `LICENSE`
+  - `README.md`, `CHANGELOG.md`, `LICENSE`
 - Root `package.json` — **dev wrapper only**:
   - `"private": true`, never published
   - no `pi` manifest → the root is not installable via `pi install`
@@ -85,7 +85,7 @@ directory by matching the tag against every `extensions/*/package.json`
 Release flow:
 
 ```bash
-# bump version in extensions/<name>/package.json (+ CHANGELOG.md if kept), commit,
+# bump version in extensions/<name>/package.json (+ a CHANGELOG.md entry), commit,
 # push main, THEN tag the pushed commit and push the tag:
 git tag -a <npm-package-name>@<version> -m "..." && git push origin <npm-package-name>@<version>
 ```
@@ -102,6 +102,8 @@ Gotchas:
 - Before working on an extension, read that extension's `README.md` first.
 - Extension names are `pi-<name>` on npm; directories keep the plain name.
 - Entry files are semantic (`<name>.ts`), not `index.ts`.
-- Every extension ships its own `README.md` and `LICENSE` (MIT).
+- Every extension ships its own `README.md`, `CHANGELOG.md`, and `LICENSE`
+  (MIT). The changelog follows the Keep a Changelog format and starts with
+  the initial `[0.1.0]` entry; every release adds an entry for its version.
 - Root is never published, never given a `pi` manifest.
-- Do not prepare bump version or modify CHANGELOG unless asked.
+- Do not bump version or modify CHANGELOG unless asked.
