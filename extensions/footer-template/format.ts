@@ -5,7 +5,8 @@ import type {
 	Theme,
 } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import { BALANCE_PROVIDERS } from "./balance.js";
+import { BALANCE_PROVIDERS, currencySymbol } from "./balance.js";
+import type { BalanceValue } from "./balance.js";
 import { AUTO_CURRENCY, CURRENCIES, ccyRate, formatCost, resolveAutoCurrency } from "./currency.js";
 import { getQuotaTemplateFields, QUOTA_PROVIDERS } from "./quota.js";
 import type { QuotaValue } from "./quota.js";
@@ -128,6 +129,44 @@ function formatBalanceField(
 }
 
 /**
+ * The `{balanceDelta}` value: first balance fetched minus the current
+ * balance, always signed and converted to the configured display currency
+ * like `{balanceStatus}` — `+$0.15` means the balance went down by $0.15
+ * since the first fetch (money spent), `-$10.00` means it went up (e.g. a
+ * top-up). Empty when the active provider has no recorded baseline or no
+ * balance, when the baseline's currency differs from the current balance's,
+ * or when the delta rounds to zero. When the conversion is not possible
+ * (no cached rate), the delta falls back to its native currency formatting,
+ * like the balance amount.
+ */
+function formatBalanceDeltaField(
+	first: BalanceValue | undefined,
+	current: BalanceValue | undefined,
+	costCurrency: string,
+	fxRates: Record<string, number> | null | undefined,
+): string {
+	if (!first || !current || first.currency !== current.currency) return "";
+	const delta = first.amount - current.amount;
+	const info = CURRENCIES[costCurrency] ?? CURRENCIES.USD;
+	let converted = delta;
+	let displayCurrency = first.currency;
+	if (first.currency !== costCurrency) {
+		const rate = ccyRate(costCurrency, fxRates);
+		const sourceRate = ccyRate(first.currency, fxRates);
+		if (rate !== undefined && sourceRate !== undefined) {
+			converted = (delta / sourceRate) * rate;
+			displayCurrency = costCurrency;
+		}
+	}
+	const rounded = Math.round(converted * 100) / 100;
+	if (rounded === 0) return "";
+	const abs = Math.abs(rounded).toFixed(2);
+	const symbol =
+		displayCurrency === costCurrency ? info.symbol : currencySymbol(displayCurrency);
+	return rounded < 0 ? `-${symbol}${abs}` : `+${symbol}${abs}`;
+}
+
+/**
  * Whether the active model's usage is backed by a subscription, mirroring
  * pi's built-in footer: Kimi Coding is subscription-backed despite using
  * API-key authentication, and OAuth providers advertise subscription backing
@@ -161,6 +200,13 @@ export interface FooterFieldOptions {
 	balanceValue: { amount: number; currency: string } | undefined;
 	/** The provider key the balance belongs to (e.g. "deepseek", "openrouter"). */
 	balanceProvider: string | undefined;
+	/**
+	 * The first successfully fetched balance per provider in the current
+	 * session, backing the `{balanceDelta}` field (first − current; see
+	 * formatBalanceDeltaField). Empty for providers whose balance never
+	 * fetched successfully.
+	 */
+	firstBalances: ReadonlyMap<string, BalanceValue>;
 	/**
 	 * Provider quota status for OAuth subscription providers (Codex, Claude):
 	 * "", "<Label>: 5h:23% used 7d:41% used", or "<Label>: <err:...>".
@@ -214,6 +260,9 @@ export function getFieldValues(
 	const balanceProviderLabel = options.balanceProvider
 		? (BALANCE_PROVIDERS[options.balanceProvider]?.label ?? options.balanceProvider)
 		: "";
+	const firstBalance = options.balanceProvider
+		? options.firstBalances.get(options.balanceProvider)
+		: undefined;
 	const quotaProviderLabel = options.quotaProvider
 		? (QUOTA_PROVIDERS[options.quotaProvider]?.label ?? options.quotaProvider)
 		: "";
@@ -282,6 +331,12 @@ export function getFieldValues(
 		extensionStatuses: formatExtensionStatuses(footerData),
 		balanceLabel,
 		balanceStatus,
+		balanceDelta: formatBalanceDeltaField(
+			firstBalance,
+			options.balanceValue,
+			costCurrency,
+			options.fxRates,
+		),
 		...quotaFields,
 		xp: process.env.PI_EXPERIMENTAL === "1" ? "xp" : "",
 	};

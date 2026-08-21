@@ -150,6 +150,11 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 	let balanceFreshUntil = 0;
 	let balanceFetching: Promise<void> | undefined;
 	let balanceFetchSeq = 0;
+	// The first successfully fetched balance per provider, backing the
+	// {balanceDelta} field (first − current; positive while money was spent
+	// since the first fetch). Keyed per provider so a provider switch keeps
+	// each provider's baseline; cleared on session start/shutdown.
+	const firstBalances = new Map<string, BalanceValue>();
 	// Provider of the currently active model, tracked synchronously from live
 	// event ctxs (see activeQuotaProvider).
 	let activeBalanceProvider: string | undefined;
@@ -272,6 +277,7 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 				// flight; the captured ctx is never read here (it may be
 				// stale after a session replacement or reload).
 				if (activeBalanceProvider !== provider) return;
+				if (value && !firstBalances.has(provider)) firstBalances.set(provider, value);
 				balanceText = formatBalanceText(label, value);
 				balanceValue = value ?? undefined;
 				balanceProvider = provider;
@@ -388,6 +394,7 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 		balanceFreshUntil = 0;
 		balanceFetching = undefined;
 		activeBalanceProvider = undefined;
+		firstBalances.clear();
 		quotaText = "";
 		quotaValue = undefined;
 		quotaProvider = undefined;
@@ -433,6 +440,7 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 							balanceText,
 							balanceValue,
 							balanceProvider,
+							firstBalances,
 							quotaText,
 							quotaValue,
 							quotaProvider,
@@ -466,6 +474,7 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 		balanceFreshUntil = 0;
 		balanceFetching = undefined;
 		activeBalanceProvider = undefined;
+		firstBalances.clear();
 		quotaText = "";
 		quotaValue = undefined;
 		quotaProvider = undefined;

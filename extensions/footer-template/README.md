@@ -113,6 +113,7 @@ These fields provide the values shown by pi's built-in footer:
 | `{extensionStatuses}` | Persistent extension statuses, sorted and joined on one line |
 | `{balanceLabel}` | Account-balance or quota label of the active provider, e.g. `DeepSeek` or `Claude`; empty when there is no status to show (see [Account balance and provider quota](#account-balance-and-provider-quota)) |
 | `{balanceStatus}` | Account-balance status without the label: `$17.35`, `No balance`, or `<err:...>`; for the OAuth quota providers only the error or `No quota` text renders here — the healthy quota status comes from the breakdown fields below; empty when there is no status to show |
+| `{balanceDelta}` | Balance change since the first successful fetch of the session — first balance minus current balance — always signed and converted to the configured display currency: `+$0.15` means the balance went down by $0.15 since the first fetch (money spent), `-$10.00` means it went up (e.g. a top-up); empty when the active provider has no recorded baseline or no monetary balance, when the baseline's and the current balance's currencies differ, or when the delta rounds to zero |
 | `{quota5hUsed}` | Used percentage for the 5-hour quota window, e.g. `23%`; `—` when the window exists but usage is unknown; empty when unavailable |
 | `{quota5hRemaining}` | Remaining percentage for the 5-hour quota window, e.g. `77%`; `—` when usage is unknown; empty when unavailable |
 | `{quota5hReset}` | Reset countdown for the 5-hour quota window, e.g. `~2h`; empty when unavailable or expired |
@@ -236,7 +237,13 @@ The balance refreshes on session start, on model selection, and after each
 turn, and is recalculated without restarting pi. When the configured display
 currency differs from the balance's own currency, the amount is converted with
 the same daily FX rates used for costs (`/set-currency`); without a rate, the
-balance keeps its native currency. Like pi-deepseek-usage, requests are sent
+balance keeps its native currency. The `{balanceDelta}` field renders how much
+the balance moved since the first successful fetch of the session — first
+minus current, so spending shows as a positive value (`+¥2.15`) and a top-up
+as a negative one; it is converted to the display currency like the balance
+amount (falling back to the native currency without a rate), and stays empty
+while the delta rounds to zero, when the account reports no balance, or for
+the quota providers. Like pi-deepseek-usage, requests are sent
 with `Accept-Encoding: identity` to avoid pi's undici gzip-decompression
 issue, and the `proxy-managed` key sentinel is respected in sandboxed
 environments.
