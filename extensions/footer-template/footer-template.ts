@@ -151,8 +151,8 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 	let balanceFetching: Promise<void> | undefined;
 	let balanceFetchSeq = 0;
 	// The first successfully fetched balance per provider, backing the
-	// {balanceDelta} field (first − current; positive while money was spent
-	// since the first fetch). Keyed per provider so a provider switch keeps
+	// {balanceDelta} field (current − first; positive while money was topped
+	// up since the first fetch). Keyed per provider so a provider switch keeps
 	// each provider's baseline; cleared on session start/shutdown.
 	const firstBalances = new Map<string, BalanceValue>();
 	// Provider of the currently active model, tracked synchronously from live

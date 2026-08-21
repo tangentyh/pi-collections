@@ -22,7 +22,7 @@ trusted) or global settings. Project settings take precedence:
 The default template — used when no template is configured — is the
 `template` shown in the JSON example above. It mirrors the layout of pi's
 built-in footer, with the account balance — and its session delta, e.g.
-`Δ+¥2.15` — right-aligned on the first line, the absolute context-usage
+`Δ-¥2.15` — right-aligned on the first line, the absolute context-usage
 token count appended right after the context usage (prefixed with `=`),
 and the cumulative total-token count right after the session token
 statistics. For the OAuth subscription providers, the first line renders
@@ -31,11 +31,11 @@ compact balance status (see [Account balance and provider
 quota](#account-balance-and-provider-quota)).
 
 So the first line shows e.g. the DeepSeek balance right-aligned
-(`DeepSeek: ¥23.45 Δ+¥2.15`, in the configured display currency), and the
+(`DeepSeek: ¥23.45 Δ-¥2.15`, in the configured display currency), and the
 stats line shows e.g.
 
 ```text
-~/project (main)                                                      DeepSeek: ¥23.45 Δ+¥2.15
+~/project (main)                                                      DeepSeek: ¥23.45 Δ-¥2.15
 ↑12k ↓9.2k R640k CH98.2% ¥0.08 Σ661,204 3.2%/1.0M=32,144    (deepseek) deepseek-v4-flash • max
 ```
 
@@ -114,7 +114,7 @@ These fields provide the values shown by pi's built-in footer:
 | `{extensionStatuses}` | Persistent extension statuses, sorted and joined on one line |
 | `{balanceLabel}` | Account-balance or quota label of the active provider, e.g. `DeepSeek` or `Claude`; empty when there is no status to show (see [Account balance and provider quota](#account-balance-and-provider-quota)) |
 | `{balanceStatus}` | Account-balance status without the label: `$17.35`, `No balance`, or `<err:...>`; for the OAuth quota providers only the error or `No quota` text renders here — the healthy quota status comes from the breakdown fields below; empty when there is no status to show |
-| `{balanceDelta}` | Balance change since the first successful fetch of the session — first balance minus current balance — always signed and converted to the configured display currency: `+$0.15` means the balance went down by $0.15 since the first fetch (money spent), `-$10.00` means it went up (e.g. a top-up); the default template renders it next to `{balanceStatus}` with a `Δ` prefix (`Δ+$0.15`); empty when the active provider has no recorded baseline or no monetary balance, when the baseline's and the current balance's currencies differ, or when the delta rounds to zero |
+| `{balanceDelta}` | Balance change since the first successful fetch of the session — current balance minus first balance — always signed and converted to the configured display currency: `-$0.15` means the balance went down by $0.15 since the first fetch (money spent), `+$10.00` means it went up (e.g. a top-up); the default template renders it next to `{balanceStatus}` with a `Δ` prefix (`Δ-$0.15`); empty when the active provider has no recorded baseline or no monetary balance, when the baseline's and the current balance's currencies differ, or when the delta rounds to zero |
 | `{quota5hUsed}` | Used percentage for the 5-hour quota window, e.g. `23%`; `—` when the window exists but usage is unknown; empty when unavailable |
 | `{quota5hRemaining}` | Remaining percentage for the 5-hour quota window, e.g. `77%`; `—` when usage is unknown; empty when unavailable |
 | `{quota5hReset}` | Reset countdown for the 5-hour quota window, e.g. `~2h`; empty when unavailable or expired |
@@ -245,9 +245,9 @@ turn, and is recalculated without restarting pi. When the configured display
 currency differs from the balance's own currency, the amount is converted with
 the same daily FX rates used for costs (`/set-currency`); without a rate, the
 balance keeps its native currency. The `{balanceDelta}` field renders how much
-the balance moved since the first successful fetch of the session — first
-minus current, so spending shows as a positive value (`+¥2.15`) and a top-up
-as a negative one; it is converted to the display currency like the balance
+the balance moved since the first successful fetch of the session — current
+minus first, so spending shows as a negative value (`-¥2.15`) and a top-up
+as a positive one; it is converted to the display currency like the balance
 amount (falling back to the native currency without a rate), and stays empty
 while the delta rounds to zero, when the account reports no balance, or for
 the quota providers. Like pi-deepseek-usage, requests are sent

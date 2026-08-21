@@ -131,10 +131,10 @@ function formatBalanceField(
 }
 
 /**
- * The `{balanceDelta}` value: first balance fetched minus the current
- * balance, always signed and converted to the configured display currency
- * like `{balanceStatus}` — `+$0.15` means the balance went down by $0.15
- * since the first fetch (money spent), `-$10.00` means it went up (e.g. a
+ * The `{balanceDelta}` value: current balance minus the first balance
+ * fetched, always signed and converted to the configured display currency
+ * like `{balanceStatus}` — `-$0.15` means the balance went down by $0.15
+ * since the first fetch (money spent), `+$10.00` means it went up (e.g. a
  * top-up). Empty when the active provider has no recorded baseline or no
  * balance, when the baseline's currency differs from the current balance's,
  * or when the delta rounds to zero. When the conversion is not possible
@@ -148,7 +148,7 @@ function formatBalanceDeltaField(
 	fxRates: Record<string, number> | null | undefined,
 ): string {
 	if (!first || !current || first.currency !== current.currency) return "";
-	const delta = first.amount - current.amount;
+	const delta = current.amount - first.amount;
 	const info = CURRENCIES[costCurrency] ?? CURRENCIES.USD;
 	let converted = delta;
 	let displayCurrency = first.currency;
@@ -204,7 +204,7 @@ export interface FooterFieldOptions {
 	balanceProvider: string | undefined;
 	/**
 	 * The first successfully fetched balance per provider in the current
-	 * session, backing the `{balanceDelta}` field (first − current; see
+	 * session, backing the `{balanceDelta}` field (current − first; see
 	 * formatBalanceDeltaField). Empty for providers whose balance never
 	 * fetched successfully.
 	 */
