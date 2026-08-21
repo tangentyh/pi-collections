@@ -347,7 +347,7 @@ export function getFieldValues(
 /** The default footer template, mirroring pi's built-in footer layout plus the cumulative total-token count and the right-aligned account balance (with its session delta) / quota-window breakdown. */
 export const DEFAULT_FOOTER_TEMPLATE =
 	"{cwd}[ ({gitBranch})][ • {sessionName}]{:right}[{balanceLabel}: {balanceStatus}][ Δ{balanceDelta}][ 5h {quota5hUsed} used ({quota5hReset})][ 7d {quota7dUsed} used ({quota7dReset})][ credits: {creditsRemaining}]\n" +
-	"[↑{sessionInput}][ ↓{sessionOutput}][ R{sessionCacheRead}][ W{sessionCacheWrite}][ CH{latestCacheHitRate}%][ {cost} {subscription}] Σ{totalTokens} {percent}%/{contextWindow}[={contextTokens}][ {autoCompaction}][ • {xp}]{:right}[ {modelProvider} {modelName} {thinkingLevel}]\n" +
+	"[↑{sessionInput}][ ↓{sessionOutput}][ R{sessionCacheRead}][ W{sessionCacheWrite}][ CH{latestCacheHitRate}%][ Σ{totalTokens}][ {cost} {subscription}] {percent}%/{contextWindow}[={contextTokens}][ {autoCompaction}][ • {xp}]{:right}[ {modelProvider} {modelName} {thinkingLevel}]\n" +
 	"{extensionStatuses}";
 
 /** The notification format used when no custom template is configured; `{cost}` carries its own currency symbol. */
