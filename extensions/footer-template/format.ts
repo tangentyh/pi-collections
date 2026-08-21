@@ -352,7 +352,7 @@ export const DEFAULT_FOOTER_TEMPLATE =
 
 /** The notification format used when no custom template is configured; `{cost}` carries its own currency symbol. */
 export const DEFAULT_RUN_NOTIFICATION_TEMPLATE =
-	"{time} ({elapsedTime} elapsed/{idleTime} idle) — {tokensPerSecond} tok/s, {cost}, ↑{input} ↓{output} R{cacheRead} W{cacheWrite}, Σ{totalTokens}";
+	"{time} ({elapsedTime} elapsed/{idleTime} idle) — {tokensPerSecond} tok/s, {cost}, ↑{input} ↓{output} R{cacheRead} W{cacheWrite} Σ{totalTokens}";
 
 /** Render the per-message throughput notification; an unset template falls back to the default format. */
 export function renderRunNotification(
