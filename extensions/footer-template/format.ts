@@ -307,9 +307,9 @@ export function getFieldValues(
 				? latestCacheHitRate.toFixed(1)
 				: "",
 		// Overrides the run-stats cost: in footer templates {cost} is the
-		// cumulative session total (empty while nothing was spent), so it can
-		// sit next to the session token fields.
-		cost: totals.cost > 0 ? formatCost(totals.cost, costCurrency, options.fxRates) : "",
+		// cumulative session total, so it can sit next to the session token
+		// fields. Keep zero visible, like the other numeric fields.
+		cost: formatCost(totals.cost, costCurrency, options.fxRates),
 		// Overrides the run-stats totalTokens: cumulative session total, so it
 		// can sit next to the session token fields.
 		totalTokens: formatCount(totals.totalTokens),

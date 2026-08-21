@@ -101,7 +101,7 @@ These fields provide the values shown by pi's built-in footer:
 | `{sessionCacheRead}` | Cumulative cache-read tokens in pi's compact format; empty when zero |
 | `{sessionCacheWrite}` | Cumulative cache-write tokens in pi's compact format; empty when zero |
 | `{latestCacheHitRate}` | Latest assistant cache-hit percentage, without the `%` sign; empty when the session has no cache usage or the rate is unknown |
-| `{cost}` | Cumulative cost, converted to the configured display currency (see [Multi-currency cost display](#multi-currency-cost-display)); empty while nothing was spent |
+| `{cost}` | Cumulative cost, converted to the configured display currency (see [Multi-currency cost display](#multi-currency-cost-display)); includes zero when nothing was spent |
 | `{subscription}` | `(sub)` when the active model's usage is subscription-backed (Kimi Coding, OAuth subscription plans); otherwise empty |
 | `{totalTokens}` | Cumulative total tokens used across the session (assistant messages, tool results, and compaction/branch-summary generation), as an exact count, e.g. `661,204` |
 | `{percent}` | Current context usage percentage, formatted to one decimal place, or `?` |
