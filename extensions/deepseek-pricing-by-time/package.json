@@ -1,6 +1,6 @@
 {
   "name": "pi-deepseek-pricing-by-time",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Time-of-day-aware DeepSeek cost accounting for pi: re-prices every DeepSeek assistant message with the official peak/off-peak rates in effect at the message's own UTC timestamp, so session totals, the footer, the statusline cost segment, and exports match what DeepSeek actually bills",
   "keywords": ["pi-package", "pi-extension", "deepseek", "pricing", "cost"],
   "license": "MIT",
