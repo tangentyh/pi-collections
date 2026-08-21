@@ -1,6 +1,6 @@
 {
   "name": "pi-footer-template",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Render pi's footer from a configurable string template; time and response throughput are reported in a notification configured the same way; multi-provider account balance with session deltas mirrors pi-tidy-footer, plus Codex/Claude OAuth quota-window breakdowns mirror pi-usage/pi-fancy-footer, in a per-provider auto currency", 
   "keywords": ["pi-package", "pi-extension", "tui"],
   "license": "MIT",
