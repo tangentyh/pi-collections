@@ -12,8 +12,11 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       id-token: write # npm trusted publishing (OIDC) + provenance
+      contents: write # create the GitHub release for the pushed tag
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history, so the annotated tag object is available
 
       - uses: actions/setup-node@v4
         with:
@@ -42,3 +45,15 @@ jobs:
 
       - run: npm publish --provenance
         working-directory: ${{ steps.pkg.outputs.dir }}
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          notes="$(git tag -l --format='%(contents)' "$tag")"
+          if [ -n "$notes" ]; then
+            gh release create "$tag" --verify-tag --title "$tag" --notes "$notes"
+          else
+            gh release create "$tag" --verify-tag --title "$tag" --generate-notes
+          fi
