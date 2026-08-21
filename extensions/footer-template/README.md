@@ -12,7 +12,7 @@ trusted) or global settings. Project settings take precedence:
 ```json
 {
   "footerTemplate": {
-    "template": "{cwd}[ ({gitBranch})][ • {sessionName}][{balanceLabel}: {balanceStatus}]:right[ 5h {quota5hUsed} used ({quota5hReset})][ 7d {quota7dUsed} used ({quota7dReset})][ credits: {creditsRemaining}]\n[↑{sessionInput}][ ↓{sessionOutput}][ R{sessionCacheRead}][ W{sessionCacheWrite}][ CH{latestCacheHitRate}%][ {cost} {subscription}] Σ{totalTokens} {percent}%/{contextWindow}[={contextTokens}][ {autoCompaction}][ • {xp}][ {modelProvider} {modelName} {thinkingLevel}]:right\n{extensionStatuses}",
+    "template": "{cwd}[ ({gitBranch})][ • {sessionName}]:right[{balanceLabel}: {balanceStatus}][ Δ{balanceDelta}][ 5h {quota5hUsed} used ({quota5hReset})][ 7d {quota7dUsed} used ({quota7dReset})][ credits: {creditsRemaining}]\n[↑{sessionInput}][ ↓{sessionOutput}][ R{sessionCacheRead}][ W{sessionCacheWrite}][ CH{latestCacheHitRate}%][ {cost} {subscription}] Σ{totalTokens} {percent}%/{contextWindow}[={contextTokens}][ {autoCompaction}][ • {xp}]:right[ {modelProvider} {modelName} {thinkingLevel}]\n{extensionStatuses}",
     "notificationTemplate": "{time} ({elapsedTime} elapsed/{idleTime} idle) — {tokensPerSecond} tok/s, {cost}, ↑{input} ↓{output} R{cacheRead} W{cacheWrite}, Σ{totalTokens}",
     "costCurrency": "auto"
   }
@@ -21,20 +21,21 @@ trusted) or global settings. Project settings take precedence:
 
 The default template — used when no template is configured — is the
 `template` shown in the JSON example above. It mirrors the layout of pi's
-built-in footer, with the account balance right-aligned on the first line,
-the absolute context-usage token count appended right after the context
-usage (prefixed with `=`), and the cumulative total-token count right after
-the session token statistics. For the OAuth subscription providers, the
-first line renders the quota-window breakdown from the structured quota
-fields instead of the compact balance status (see [Account balance and
-provider quota](#account-balance-and-provider-quota)).
+built-in footer, with the account balance — and its session delta, e.g.
+`Δ+¥2.15` — right-aligned on the first line, the absolute context-usage
+token count appended right after the context usage (prefixed with `=`),
+and the cumulative total-token count right after the session token
+statistics. For the OAuth subscription providers, the first line renders
+the quota-window breakdown from the structured quota fields instead of the
+compact balance status (see [Account balance and provider
+quota](#account-balance-and-provider-quota)).
 
 So the first line shows e.g. the DeepSeek balance right-aligned
-(`DeepSeek: ¥23.45`, in the configured display currency), and the stats line
-shows e.g.
+(`DeepSeek: ¥23.45 Δ+¥2.15`, in the configured display currency), and the
+stats line shows e.g.
 
 ```text
-~/project (main)                                                              DeepSeek: ¥23.45
+~/project (main)                                                          DeepSeek: ¥23.45 Δ+¥2.15
 ↑12k ↓9.2k R640k CH98.2% ¥0.08 Σ661,204 3.2%/1.0M=32,144    (deepseek) deepseek-v4-flash • max
 ```
 
@@ -52,8 +53,8 @@ omitted when all of its fields are empty. Separators and other decorations
 therefore live in the string template, while fields contain only their values.
 An empty field also removes one adjacent whitespace run, so separators around
 dropped values leave no stray spaces inside a kept section. The `:right`
-modifier pushes a field — or a bracketed section — to the right edge of its
-line: this is how the balance lands on the right side of the first line and
+marker splits its line, pushing everything after it to the right edge: this
+is how the balance lands on the right side of the first line and
 the model information on the right side of the stats line, just like the
 built-in footer. The third line renders only when extension statuses exist.
 
@@ -113,7 +114,7 @@ These fields provide the values shown by pi's built-in footer:
 | `{extensionStatuses}` | Persistent extension statuses, sorted and joined on one line |
 | `{balanceLabel}` | Account-balance or quota label of the active provider, e.g. `DeepSeek` or `Claude`; empty when there is no status to show (see [Account balance and provider quota](#account-balance-and-provider-quota)) |
 | `{balanceStatus}` | Account-balance status without the label: `$17.35`, `No balance`, or `<err:...>`; for the OAuth quota providers only the error or `No quota` text renders here — the healthy quota status comes from the breakdown fields below; empty when there is no status to show |
-| `{balanceDelta}` | Balance change since the first successful fetch of the session — first balance minus current balance — always signed and converted to the configured display currency: `+$0.15` means the balance went down by $0.15 since the first fetch (money spent), `-$10.00` means it went up (e.g. a top-up); empty when the active provider has no recorded baseline or no monetary balance, when the baseline's and the current balance's currencies differ, or when the delta rounds to zero |
+| `{balanceDelta}` | Balance change since the first successful fetch of the session — first balance minus current balance — always signed and converted to the configured display currency: `+$0.15` means the balance went down by $0.15 since the first fetch (money spent), `-$10.00` means it went up (e.g. a top-up); the default template renders it next to `{balanceStatus}` with a `Δ` prefix (`Δ+$0.15`); empty when the active provider has no recorded baseline or no monetary balance, when the baseline's and the current balance's currencies differ, or when the delta rounds to zero |
 | `{quota5hUsed}` | Used percentage for the 5-hour quota window, e.g. `23%`; `—` when the window exists but usage is unknown; empty when unavailable |
 | `{quota5hRemaining}` | Remaining percentage for the 5-hour quota window, e.g. `77%`; `—` when usage is unknown; empty when unavailable |
 | `{quota5hReset}` | Reset countdown for the 5-hour quota window, e.g. `~2h`; empty when unavailable or expired |
@@ -123,12 +124,15 @@ These fields provide the values shown by pi's built-in footer:
 | `{creditsRemaining}` | Remaining/available Codex credits, e.g. `12.34`, without a unit or prefix; empty for providers without credits |
 | `{xp}` | `xp` when `PI_EXPERIMENTAL=1`, otherwise empty |
 
-Appending `:right` to any field name — or to a bracketed section —
-right-aligns that unit on its line, e.g. `{modelName}:right` or
-`[{balanceLabel}: {balanceStatus}]:right`. The line is split at that unit:
-the text before it stays left-aligned, the unit is pushed to the right edge
-with at least two spaces of separation, and overlong lines are truncated like
-the built-in stats line (left part first, then the right part).
+A `:right` marker splits its line: the text before it stays left-aligned,
+and everything after it — fields, optional sections, or literal text — is
+pushed to the right edge as one unit. The marker sits at the boundary, e.g.
+`{cwd}[ ({gitBranch})][ • {sessionName}]:right[{balanceLabel}: {balanceStatus}][ Δ{balanceDelta}]`
+or `:right{modelName}` to right-align a single field. Only the first marker
+outside an optional section splits the line; later ones stay literal text.
+The right side is pushed to the edge with at least two spaces of separation,
+and overlong lines are truncated like the built-in stats line (left part
+first, then the right part).
 
 The session token fields (`{sessionInput}`, `{sessionOutput}`,
 `{sessionCacheRead}`, `{sessionCacheWrite}`, `{cost}`, `{subscription}`,
@@ -324,10 +328,11 @@ The built-in footer renders two lines, plus an optional extension-status line:
 The third line appears only when extension statuses exist. The model
 information is right-aligned and may include the provider when multiple
 providers are available. The default template above renders this same layout,
-plus the account balance right-aligned on the first line (the quota-window
-breakdown for the OAuth subscription providers), the absolute
-context-usage token count appended after the context usage, and the
-cumulative total-token count right after the session token statistics.
+plus the account balance — with its session delta — right-aligned on the
+first line (the quota-window breakdown for the OAuth subscription
+providers), the absolute context-usage token count appended after the
+context usage, and the cumulative total-token count right after the session
+token statistics.
 The built-in footer also handles width-aware truncation and context-usage
 coloring; a custom template controls its own spacing and styling.
 
