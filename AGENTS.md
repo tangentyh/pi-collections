@@ -55,11 +55,36 @@ running pi with `/reload`.
 > pi's git sources clone a whole repository and install what its root
 > `package.json` declares, so there is no `git:.../extensions/<name>` form.
 
-## Tags
+## Tags & publishing
 
 Per-package annotated tags, named after the npm package name (not the
 directory): `<npm-package-name>@<version>`, e.g. `pi-footer-template@0.2.0`.
 Tag each published package version accordingly.
+
+Pushing such a tag triggers `.github/workflows/publish.yml`, which publishes
+the matching extension to npm with provenance via **npm trusted publishing
+(OIDC)** — no token secret is involved. The workflow resolves the extension
+directory by matching the tag against every `extensions/*/package.json`
+`name@version` and fails loudly on mismatch.
+
+Release flow:
+
+```bash
+# bump version in extensions/<name>/package.json (+ CHANGELOG.md if kept), commit,
+# push main, THEN tag the pushed commit and push the tag:
+git tag -a <npm-package-name>@<version> -m "..." && git push origin <npm-package-name>@<version>
+```
+
+Gotchas:
+
+- The tag must point to a commit that **contains the workflow file** — GitHub
+  only triggers workflows present at the tagged commit. Tag after pushing main.
+- `npm ci` requires `package-lock.json` to be in sync; run `npm install` at the
+  root after any dependency/version change and commit the lockfile.
+- All lockfile `resolved` URLs must be `registry.npmjs.org`; mirror URLs
+  (e.g. corporate feeds) fail in CI with `EALLOWREMOTE` under npm ≥ 11.6.
+- One-time setup per new package: configure its Trusted Publisher on npmjs.com
+  (GitHub Actions → `tangentyh` / `pi-collections` / `publish.yml`).
 
 ## Conventions
 
