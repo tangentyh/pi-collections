@@ -55,6 +55,21 @@ running pi with `/reload`.
 > pi's git sources clone a whole repository and install what its root
 > `package.json` declares, so there is no `git:.../extensions/<name>` form.
 
+## Adding a new extension
+
+Follow the layout and naming conventions above; concretely:
+
+1. Create `extensions/<name>/` — easiest by copying an existing extension's
+   `package.json` and adjusting it.
+2. Add a `"start:<name>": "pi -e ./extensions/<name>/<name>.ts"` script to the
+   root `package.json`.
+3. Run `npm install` at the root so the workspace links the new package, then
+   `npm run typecheck` must pass.
+4. Add the extension to the list in this file (`## Extensions`) and to the table
+   in `README.md` (`## What's here`) — same order, names, descriptions in both.
+5. Before its **first** publish: configure the Trusted Publisher for `pi-<name>`
+   on npmjs.com (see Gotchas below).
+
 ## Tags & publishing
 
 Per-package annotated tags, named after the npm package name (not the
@@ -77,12 +92,8 @@ git tag -a <npm-package-name>@<version> -m "..." && git push origin <npm-package
 
 Gotchas:
 
-- The tag must point to a commit that **contains the workflow file** — GitHub
-  only triggers workflows present at the tagged commit. Tag after pushing main.
 - `npm ci` requires `package-lock.json` to be in sync; run `npm install` at the
   root after any dependency/version change and commit the lockfile.
-- All lockfile `resolved` URLs must be `registry.npmjs.org`; mirror URLs
-  (e.g. corporate feeds) fail in CI with `EALLOWREMOTE` under npm ≥ 11.6.
 - One-time setup per new package: configure its Trusted Publisher on npmjs.com
   (GitHub Actions → `tangentyh` / `pi-collections` / `publish.yml`).
 
