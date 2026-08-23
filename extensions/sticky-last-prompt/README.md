@@ -49,15 +49,18 @@ The pin is a non-capturing full-width overlay anchored top-left, kept in
 sync by a per-frame widget hook (no polling timers). Click interception
 wraps the renderer instance's internal selection handler — in pi 0.84.x,
 click events are consumed centrally before any public extension API can see
-them, and that handler is the only seam left. All internal access is
-defensive: if a future pi renames these pieces, clicking stops working but
-nothing else breaks.
+them, and that handler is the only seam left. The same instance patching
+teaches `hasOverlay()` to ignore our non-capturing bar (and only ours), so
+the stock scrollbar and text selection stay live while it is shown. All
+internal access is defensive: if a future pi renames these pieces, clicking
+stops working but nothing else breaks.
 
 ### Known tradeoffs
 
-- While the bar is visible, pi's **scrollbar dragging** is disabled (any
-  overlay suppresses it). Wheel scrolling and page/line keybindings are
-  unaffected.
+- While the bar is visible, scrollbar dragging and mouse text selection keep
+  working: the extension reports "no overlay" to pi while its own
+  non-capturing bar is the only overlay shown. When another overlay is on top
+  (search box, dialogs), stock pi suppression applies.
 - The bar covers the top transcript row while shown.
 - If compaction or branch pruning removes the pinned message from the
   rendered tree, a click jumps to the nearest remaining anchor instead.

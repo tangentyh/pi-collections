@@ -9,23 +9,26 @@
  *     right below the bar. Everything else (wheel, selection, drag, other
  *     buttons) behaves exactly as stock pi.
  *
- * Why a click patch instead of a public mouse API (pi 0.84.x):
+ * Why instance patches instead of a public mouse API (pi 0.84.x):
  *   TuiAltScreen registers its input listener at construction time — before
  *   any extension can — and consumes every parsed SGR click unconditionally
  *   (scrollbar first, then text selection). Neither `tui.addInputListener`
  *   nor `ctx.ui.onTerminalInput` ever sees clicks, and overlays receive
- *   keyboard only. The single seam left is `handleSelectionMouseEvent`,
- *   which receives every non-scrollbar click with parsed coordinates; we
- *   wrap it on the renderer instance (restored on session_shutdown) and
- *   swallow exactly one gesture: a left-button press inside the bar.
+ *   keyboard only. The seams left are two internal methods, both wrapped on
+ *   the renderer instance (restored on session_shutdown):
+ *     - `handleSelectionMouseEvent` receives every non-scrollbar click with
+ *       parsed coordinates; we swallow exactly one gesture: a left-button
+ *       press inside the bar.
+ *     - `hasOverlay()` gates scrollbar dragging and selection anchoring;
+ *       pi bails out of both whenever ANY overlay is visible. While our
+ *       non-capturing bar is the only visible overlay we report "none", so
+ *       the scrollbar stays draggable; with any other overlay on top, stock
+ *       suppression applies untouched.
  *
  * Caveats:
- *   - Depends on pi internals (renderer method, component tree shapes).
+ *   - Depends on pi internals (renderer methods, overlay stack shape).
  *     All access is defensive; if pi renames things, clicking silently
  *     stops working but nothing else breaks.
- *   - While the bar is visible, pi disables scrollbar dragging whenever any
- *     overlay exists (`getScrollbarTargetAt` bails on `hasOverlay()`).
- *     Wheel scrolling and all keybindings are unaffected.
  */
 
 import {
@@ -63,14 +66,22 @@ interface ScrollViewLike {
 	scrollTo(scrollTop: number, options?: { disableFollow?: boolean }): void;
 }
 
+/** One entry of TUI.overlayStack (private in pi-tui; read defensively). */
+interface OverlayEntryLike {
+	component?: unknown;
+	hidden?: boolean;
+}
+
 /**
  * The fullscreen renderer (TuiAltScreen). Members beyond TUI are internal:
  * kept optional so a pi update degrades to "clicks don't work", not crashes.
  */
 type AltScreen = TUI & {
-	layoutRoot?: { entries?: readonly { component?: unknown }[] } | null;
+	layoutRoot?: { entries?: readonly { component?: unknown }[] | null } | null;
 	getPrimaryScrollView?: () => ScrollViewLike | undefined;
 	handleSelectionMouseEvent?: (event: MouseEventLike) => unknown;
+	overlayStack?: readonly unknown[];
+	isOverlayVisible?: (entry: unknown) => boolean;
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -254,6 +265,17 @@ export default function stickyLastPrompt(pi: ExtensionAPI): void {
 
 	// ─── Click → jump ─────────────────────────────────────────────
 
+	/** Swallow exactly one gesture: a left-button press inside the bar.
+	 *  Motion (bit 32), other buttons, and releases pass through untouched,
+	 *  matching pi's own scrollbar press test. */
+	function tryConsumeClick(event: MouseEventLike): boolean {
+		if (!overlay || overlay.isHidden()) return false;
+		if (event.release || (event.button & 32) !== 0 || (event.button & 3) !== 0) return false;
+		if (event.y < 0 || event.y >= bar.renderedRows) return false;
+		jumpToPinnedMessage();
+		return true;
+	}
+
 	function jumpToPinnedMessage(): void {
 		const sv = primaryScrollView();
 		if (!sv) return;
@@ -267,35 +289,59 @@ export default function stickyLastPrompt(pi: ExtensionAPI): void {
 		altScreen?.requestRender();
 	}
 
-	/** Swallow exactly one gesture: a left-button press inside the bar.
-	 *  Motion (bit 32), other buttons, and releases pass through untouched,
-	 *  matching pi's own scrollbar press test. */
-	function tryConsumeClick(event: MouseEventLike): boolean {
-		if (!overlay || overlay.isHidden()) return false;
-		if (event.release || (event.button & 32) !== 0 || (event.button & 3) !== 0) return false;
-		if (event.y < 0 || event.y >= bar.renderedRows) return false;
-		jumpToPinnedMessage();
+	// ─── Renderer patches (the only seams that see clicks) ───────
+
+	/** While the ONLY visible overlay is our non-capturing bar, report "no
+	 *  overlay" so pi's `getScrollbarTargetAt` and selection anchor stop
+	 *  bailing on `hasOverlay()` — scrollbar dragging/hover and mouse text
+	 *  selection work as if the bar weren't there. Any other visible overlay
+	 *  (search box, dialogs, other extensions) keeps stock suppression. */
+	function installHasOverlayPatch(screen: AltScreen): boolean {
+		if (typeof screen.hasOverlay !== "function") return false;
+		const originalHasOverlay = screen.hasOverlay.bind(screen);
+		const isVisible = (entry: OverlayEntryLike): boolean => {
+			try {
+				return typeof screen.isOverlayVisible === "function"
+					? screen.isOverlayVisible(entry)
+					: !entry.hidden;
+			} catch {
+				return true; // assume visible → conservative (keeps suppression)
+			}
+		};
+		screen.hasOverlay = (): boolean => {
+			const stack = screen.overlayStack;
+			if (!Array.isArray(stack)) return originalHasOverlay();
+			for (const raw of stack) {
+				const entry = raw as OverlayEntryLike;
+				if (!isVisible(entry)) continue;
+				if (entry.component !== bar) return originalHasOverlay();
+			}
+			return false; // nothing but our bar → act overlay-free
+		};
 		return true;
 	}
 
-	// ─── Renderer patch (the only seam that sees clicks) ──────────
-
-	function installClickPatch(screen: AltScreen): void {
+	function installRendererPatches(screen: AltScreen): void {
 		if (patchedRenderers.has(screen)) return;
-		if (typeof screen.handleSelectionMouseEvent !== "function") return;
-		patchedRenderers.add(screen);
-		const original = screen.handleSelectionMouseEvent.bind(screen);
-		screen.handleSelectionMouseEvent = (event: MouseEventLike): unknown => {
-			if (tryConsumeClick(event)) return undefined;
-			return original(event);
-		};
+		let installed = false;
+		if (typeof screen.handleSelectionMouseEvent === "function") {
+			installed = true;
+			const original = screen.handleSelectionMouseEvent.bind(screen);
+			screen.handleSelectionMouseEvent = (event: MouseEventLike): unknown => {
+				if (tryConsumeClick(event)) return undefined;
+				return original(event);
+			};
+		}
+		installed = installHasOverlayPatch(screen) || installed;
+		if (installed) patchedRenderers.add(screen);
 	}
 
-	function uninstallClickPatch(): void {
+	function uninstallRendererPatches(): void {
 		const screen = altScreen;
 		if (!screen || !patchedRenderers.has(screen)) return;
-		// Remove the own-property override → prototype method shines through.
+		// Remove the own-property overrides → prototype methods shine through.
 		delete screen.handleSelectionMouseEvent;
+		delete (screen as { hasOverlay?: () => boolean }).hasOverlay;
 		patchedRenderers.delete(screen);
 	}
 
@@ -357,7 +403,7 @@ export default function stickyLastPrompt(pi: ExtensionAPI): void {
 			const screen = tui as AltScreen;
 			altScreen = screen;
 			bar.setTheme(theme);
-			installClickPatch(screen);
+			installRendererPatches(screen);
 			syncOverlay();
 			return EMPTY_COMPONENT;
 		});
@@ -373,7 +419,7 @@ export default function stickyLastPrompt(pi: ExtensionAPI): void {
 
 	pi.on("session_shutdown", async (_event, ctx) => {
 		ctx.ui.setWidget(WIDGET_ID, undefined);
-		uninstallClickPatch();
+		uninstallRendererPatches();
 		overlay?.hide();
 		overlay = null;
 		altScreen = undefined;
