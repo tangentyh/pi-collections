@@ -11,6 +11,7 @@
   "workspaces": ["extensions/*"],
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "test": "npm test --workspaces",
     "start:scroll-speed": "pi -e ./extensions/scroll-speed/scroll-speed.ts",
     "start:cursor": "pi -e ./extensions/focus-aware-blinking-cursor-and-border/focus-aware-blinking-cursor-and-border.ts",
     "start:footer-template": "pi -e ./extensions/footer-template/footer-template.ts",

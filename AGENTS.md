@@ -51,6 +51,13 @@ npm run start:<name> # launch pi with one extension loaded, e.g. start:scroll-sp
                      # (same as `pi -e ./extensions/<name>/<name>.ts`)
 ```
 
+Every extension declares a `test` script in its own `package.json` (an
+`echo "no tests"` placeholder when it has no suite): plain `npm test` at the
+root runs every suite via npm workspaces, `npm test -w <pkg-name>` runs one
+(e.g. `npm test -w pi-sticky-last-prompt`). Suites live in
+`extensions/<name>/tests/` as erasable-only TypeScript that Node runs
+directly, headlessly against the real installed pi-tui.
+
 `pi install ./extensions/<name>` records a local path in
 `~/.pi/agent/settings.json` without copying; edited files take effect in a
 running pi with `/reload`.

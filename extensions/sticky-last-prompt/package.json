@@ -16,6 +16,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p ../..",
+    "test": "node tests/test.ts",
     "prepublishOnly": "npm run typecheck"
   },
   "peerDependencies": {

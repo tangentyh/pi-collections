@@ -16,6 +16,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p ../..",
+    "test": "echo \"no tests\"",
     "prepublishOnly": "npm run typecheck"
   },
   "peerDependencies": {
