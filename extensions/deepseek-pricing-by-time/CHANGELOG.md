@@ -5,6 +5,15 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-08-23
+
+### Fixed
+
+- Weekend messages are no longer priced at peak rates: DeepSeek applies the
+  peak windows (01:00–04:00 & 06:00–10:00 UTC) only Monday–Friday, so
+  `tierAt()` now returns off-peak on Sat/Sun regardless of hour. Published
+  rates themselves are unchanged.
+
 ## [0.2.0] - 2026-08-22
 
 ### Added
