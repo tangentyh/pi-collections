@@ -24,7 +24,8 @@ the statusline `cost` segment, `/usage`, exports — matches what DeepSeek bills
 
 ## Official rate schedule (as of 2026)
 
-Peak hours: **01:00–04:00 & 06:00–10:00 UTC** (09:00–12:00 & 14:00–18:00 Beijing).
+Peak hours: **01:00–04:00 & 06:00–10:00 UTC, Monday–Friday** (09:00–12:00 &
+14:00–18:00 Beijing). All other hours — including weekends — are off-peak.
 Off-peak rates are exactly half of peak. DeepSeek does not charge for cache writes.
 
 | Model | Tier | Input (cache miss) | Output | Cache hit (input) | Cache write |

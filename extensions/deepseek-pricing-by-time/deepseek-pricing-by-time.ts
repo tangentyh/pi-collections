@@ -10,7 +10,8 @@ import {
 } from "@earendil-works/pi-coding-agent";
 
 // DeepSeek official USD pricing (https://api-docs.deepseek.com/quick_start/pricing)
-// Peak hours: 01:00-04:00 & 06:00-10:00 UTC (09:00-12:00 & 14:00-18:00 Beijing time).
+// Peak hours: 01:00-04:00 & 06:00-10:00 UTC (09:00-12:00 & 14:00-18:00 Beijing time),
+// Monday through Friday; all other hours — including weekends — are off-peak.
 // Off-peak rates are exactly half of peak. DeepSeek does not charge for cache writes.
 //
 // pi's built-in cost display is static: it applies whatever rates are in the model
@@ -33,7 +34,7 @@ interface DeepSeekRates {
 
 type Tier = "peak" | "offPeak";
 
-/** UTC hours inside a peak window: [01:00, 04:00) and [06:00, 10:00). */
+/** UTC hours inside a peak window: [01:00, 04:00) and [06:00, 10:00), Monday-Friday. */
 const PEAK_HOURS_UTC = new Set([1, 2, 3, 6, 7, 8, 9]);
 
 const RATES: Record<string, { peak: DeepSeekRates; offPeak: DeepSeekRates }> = {
@@ -53,6 +54,9 @@ const RATES: Record<string, { peak: DeepSeekRates; offPeak: DeepSeekRates }> = {
 };
 
 function tierAt(date: Date): Tier {
+	// Peak windows only apply Monday-Friday (getUTCDay(): Sun=0 … Sat=6); the
+	// windows never cross midnight, so the timestamp's own day+hour suffice.
+	if (date.getUTCDay() < 1 || date.getUTCDay() > 5) return "offPeak";
 	return PEAK_HOURS_UTC.has(date.getUTCHours()) ? "peak" : "offPeak";
 }
 
@@ -156,7 +160,7 @@ export default function (pi: ExtensionAPI) {
 				? ` input $${r.input}/M, output $${r.output}/M, cacheRead $${r.cacheRead}/M`
 				: "";
 			ctx.ui.notify(
-				`DeepSeek tier: ${tier === "peak" ? "PEAK ⚠️" : "off-peak"} (UTC ${now.getUTCHours()}:00; peak 01-04 & 06-10 UTC)${rateText}`,
+				`DeepSeek tier: ${tier === "peak" ? "PEAK ⚠️" : "off-peak"} (UTC ${now.getUTCHours()}:00; peak 01-04 & 06-10 UTC Mon-Fri)${rateText}`,
 				tier === "peak" ? "warning" : "info",
 			);
 		},
