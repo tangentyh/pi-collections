@@ -1,0 +1,30 @@
+{
+  "name": "pi-sticky-last-prompt",
+  "version": "0.1.0",
+  "description": "Pins your last user message to the top of pi's fullscreen TUI; clicking the pinned bar jumps to that message in the transcript",
+  "keywords": ["pi-package", "pi-extension", "tui"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tangentyh/pi-collections.git",
+    "directory": "extensions/sticky-last-prompt"
+  },
+  "homepage": "https://github.com/tangentyh/pi-collections/tree/main/extensions/sticky-last-prompt",
+  "type": "module",
+  "pi": {
+    "extensions": ["./sticky-last-prompt.ts"]
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p ../..",
+    "prepublishOnly": "npm run typecheck"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^0.84.1",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0"
+  },
+  "files": ["sticky-last-prompt.ts", "README.md", "LICENSE"]
+}
