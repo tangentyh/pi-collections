@@ -293,6 +293,127 @@ async function runTests(stickyLastPrompt: (pi: ExtensionAPI) => void): Promise<v
 		"draggable again after foreign overlay hides",
 	);
 
+	// ── resume lifecycle (the "always pins the last message" bug) ──
+	// pi replaces the AgentSession on /resume and --continue: the old runner
+	// gets session_shutdown, a NEW runtime re-invokes the extension factory,
+	// and the transcript is rebuilt (chatContainer.clear + renderSessionEntries)
+	// BEFORE session_start(resume) fires via bindExtensions. Each instance must
+	// end up with a scroll-aware bar over the rebuilt transcript — not a static
+	// seed of the last message.
+	{
+		const makeRegistry = () => {
+			const reg: Record<string, (...args: any[]) => unknown> = {};
+			return {
+				reg,
+				ctx: {
+					mode: "tui",
+					hasUI: true,
+					ui: { setWidget: (_id: string, fn?: WidgetFactory) => {
+						resumeFactory = fn;
+					} },
+				},
+			};
+		};
+		let resumeFactory: WidgetFactory | undefined;
+
+		// Isolated renderer + transcript so this scenario can't lean on state
+		// from the earlier sections.
+		const resumeTui = new TuiAltScreen(fakeTerminal);
+		interface ResumeInternals {
+			handleViewportInput(data: string): unknown;
+		}
+		const resumeScreen = resumeTui as unknown as ResumeInternals;
+		const resumeDoc = new Container();
+		const resumeView = new ScrollView(resumeDoc, { primary: true, scrollbar: "always" });
+		resumeTui.setLayoutRoot(resumeView);
+		resumeTui.start();
+
+		const resumeBarText = (): string => {
+			const stack = (resumeTui as unknown as { overlayStack?: readonly { component?: unknown }[] })
+				.overlayStack;
+			const bar = stack
+				?.map((entry) => entry.component)
+				.find((c): c is BarLike => !!c && typeof (c as BarLike).renderedRows === "number");
+			assert.ok(bar, "resume scenario: bar overlay present");
+			return stripAnsi(bar.render(innerWidth).join(""));
+		};
+		const resumeScrollTo = (top: number) => {
+			resumeView.scrollTo(top, { disableFollow: true });
+			resumeTui.renderNow(true);
+		};
+
+		// Instance A: live session grows a transcript.
+		const a = makeRegistry();
+		stickyLastPrompt({ on: (event: string, handler: (...args: any[]) => unknown) => {
+			a.reg[event] = handler;
+		} } as unknown as ExtensionAPI);
+		await a.reg["session_start"]({ type: "session_start", reason: "startup" }, a.ctx);
+		assert.ok(resumeFactory, "instance A registered its widget");
+		resumeFactory!(resumeTui, fakeTheme);
+		resumeDoc.addChild(new UserMessageComponent("live question"));
+		resumeDoc.addChild(lines(40, "live-filler"));
+		resumeTui.renderNow(true);
+		resumeScrollTo(0);
+		assert.match(resumeBarText(), /live question/, "instance A tracks the live transcript");
+
+		// Teardown: instance A must fully uninstall its renderer patches…
+		await a.reg["session_shutdown"]({ type: "session_shutdown", reason: "resume" }, a.ctx);
+		assert.equal(
+			Object.hasOwn(resumeTui, "hasOverlay"),
+			false,
+			"instance A removed its hasOverlay override",
+		);
+
+		// …pi re-runs the same module factory for the new runtime (fresh closure
+		// state: fresh cache, fresh WeakSet, fresh bar)…
+		const b = makeRegistry();
+		stickyLastPrompt({ on: (event: string, handler: (...args: any[]) => unknown) => {
+			b.reg[event] = handler;
+		} } as unknown as ExtensionAPI);
+
+		// …rebuilds the transcript FIRST (renderCurrentSessionState order)…
+		resumeDoc.clear();
+		resumeDoc.addChild(new UserMessageComponent("resumed question one"));
+		resumeDoc.addChild(lines(30, "resumed-filler-one"));
+		resumeDoc.addChild(new UserMessageComponent("resumed question two"));
+		resumeDoc.addChild(lines(30, "resumed-filler-two"));
+		resumeDoc.addChild(new UserMessageComponent("resumed question three"));
+		resumeDoc.addChild(lines(25, "resumed-tail"));
+
+		// …and only then emits session_start for the resumed session.
+		await b.reg["session_start"]({ type: "session_start", reason: "resume" }, b.ctx);
+		assert.ok(resumeFactory, "instance B registered its widget");
+		resumeFactory!(resumeTui, fakeTheme); // setWidget invokes the factory synchronously
+		resumeTui.renderNow(true);
+
+		assert.equal(
+			Object.hasOwn(resumeTui, "handleSelectionMouseEvent"),
+			true,
+			"instance B reinstalled the click patch",
+		);
+		assert.equal(resumeTui.hasOverlay(), false, "instance B bar alone is still overlay-free");
+
+		// Scroll-aware over the RESUMED transcript — never a stale/static seed.
+		const startThree =
+			linesOf(new UserMessageComponent("resumed question one")) +
+			30 +
+			linesOf(new UserMessageComponent("resumed question two")) +
+			30;
+		resumeScrollTo(contentHeightOf(resumeView)); // clamps to bottom
+		assert.match(resumeBarText(), /resumed question three/, "bottom pins the latest message");
+		resumeScreen.handleViewportInput("\x1b[<0;11;1M"); // click bar at bottom
+		assert.equal(
+			resumeView.scrollTop,
+			Math.max(0, startThree - 1),
+			"click after resume jumps to the pinned message",
+		);
+		resumeScrollTo(0);
+		assert.match(resumeBarText(), /resumed question one/, "top falls back to the earliest message");
+		assert.doesNotMatch(resumeBarText(), /three/, "no static last-message seed survives resume");
+
+		await b.reg["session_shutdown"]({ type: "session_shutdown", reason: "shutdown" }, b.ctx);
+	}
+
 	// ── uninstall (session_shutdown) removes instance overrides ────
 	await handlers["session_shutdown"]({}, ctx);
 	assert.equal(Object.hasOwn(tui, "hasOverlay"), false, "own-property hasOverlay removed");

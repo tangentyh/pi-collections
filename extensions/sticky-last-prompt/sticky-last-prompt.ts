@@ -410,6 +410,11 @@ export default function stickyLastPrompt(pi: ExtensionAPI): void {
 
 	pi.on("session_start", async (_event, ctx) => {
 		if (ctx.mode !== "tui" || !ctx.hasUI) return;
+		// Drop anything derived from a previous transcript. session_shutdown
+		// already resets this on the normal paths, but hosts that re-bind the
+		// same extension instance (bindExtensions can emit session_start more
+		// than once) have no shutdown in between.
+		anchorCache = null;
 		// Widget registered once: captures the tui reference, keeps the bar
 		// themed, installs the click patch, and creates the overlay. The pin
 		// itself is resolved per paint inside PinBar.render() — scrolling,
