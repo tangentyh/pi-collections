@@ -1,13 +1,16 @@
 /**
- * sticky-last-prompt — Pin your last user message to the top of pi's
- * fullscreen TUI; click the pinned bar to jump to that message.
+ * sticky-last-prompt — Pin the user message your viewport is currently in to
+ * the top of pi's fullscreen TUI; click the pinned bar to jump to it.
  *
  * Behavior:
- *   - After you send a prompt, a one-line bar pins to the very top of the
- *     screen showing it (whitespace collapsed, ellipsized to fit).
- *   - Left-clicking the bar scrolls the transcript so that message sits
- *     right below the bar. Everything else (wheel, selection, drag, other
- *     buttons) behaves exactly as stock pi.
+ *   - A one-line bar pins to the very top of the screen showing the latest
+ *     user message the current viewport reaches: while the newest prompt is
+ *     still on screen (or you're below it) that's the one pinned; once you
+ *     scroll up past it, the bar falls back to the second-to-last, and so
+ *     on (whitespace collapsed, ellipsized to fit).
+ *   - Left-clicking the bar scrolls the transcript so the currently shown
+ *     message sits right below the bar. Everything else (wheel, selection,
+ *     drag, other buttons) behaves exactly as stock pi.
  *
  * Why instance patches instead of a public mouse API (pi 0.84.x):
  *   TuiAltScreen registers its input listener at construction time — before
@@ -34,7 +37,6 @@
 import {
 	UserMessageComponent,
 	type ExtensionAPI,
-	type ExtensionContext,
 	type Theme,
 } from "@earendil-works/pi-coding-agent";
 import {
@@ -61,6 +63,7 @@ interface MouseEventLike {
 interface ScrollViewLike {
 	scrollTop: number;
 	contentHeight?: number;
+	viewportHeight?: number;
 	child?: unknown;
 	getContentWidth?(width: number): number;
 	scrollTo(scrollTop: number, options?: { disableFollow?: boolean }): void;
@@ -116,24 +119,35 @@ function isPlainContainer(value: unknown): value is { children: readonly unknown
 	return name === "Container" && Array.isArray((value as { children?: unknown }).children);
 }
 
+/** One user message located in document coordinates. */
+interface UserAnchor {
+	/** First document row of the message. */
+	start: number;
+	/** Collapsed single-line text of the message. */
+	text: string;
+}
+
 /**
- * Accumulate document line offsets down the transcript tree, remembering the
- * start of the last (bottom-most) UserMessageComponent. Recurses only into
- * plain Containers (pure concatenation of children) so offsets match exactly
- * what the transcript ScrollView paints.
+ * Accumulate document line offsets down the transcript tree, recording EVERY
+ * UserMessageComponent's start row and text. Recurses only into plain
+ * Containers (pure concatenation of children) so offsets match exactly what
+ * the transcript ScrollView paints.
  */
-function walkForLastUserMessage(
+function collectUserAnchors(
 	children: readonly unknown[],
 	width: number,
 	offset: number,
-	found: { start?: number },
+	found: UserAnchor[],
 ): number {
 	for (const child of children) {
 		if (child instanceof UserMessageComponent) {
-			found.start = offset;
+			const text = collapseWhitespace(
+				extractUserText((child as unknown as { text?: unknown }).text),
+			);
+			if (text) found.push({ start: offset, text });
 			offset += measureLines(child, width);
 		} else if (isPlainContainer(child)) {
-			offset = walkForLastUserMessage(child.children, width, offset, found);
+			offset = collectUserAnchors(child.children, width, offset, found);
 		} else {
 			offset += measureLines(child, width);
 		}
@@ -159,7 +173,7 @@ function extractUserText(content: unknown): string {
 	return parts.join("\n");
 }
 
-/** Renders nothing; the widget factory returning it is the per-frame hook. */
+/** Renders nothing; the widget factory returning it just wires up state. */
 const EMPTY_COMPONENT: Component = {
 	render: () => [],
 	invalidate: () => {},
@@ -206,19 +220,21 @@ class PinBar implements Component {
 // ═══════════════════════════════════════════════════════════════
 
 export default function stickyLastPrompt(pi: ExtensionAPI): void {
-	/** Collapsed text of the last user prompt this session. */
-	let pinnedText = "";
 	let altScreen: AltScreen | undefined;
 	let overlay: OverlayHandle | null = null;
 	const patchedRenderers = new WeakSet<AltScreen>();
-	/** Offset cache keyed by the two things that move content: width + height. */
-	let offsetCache: {
+	/** Anchor cache keyed by everything that moves content: width, height,
+	 *  and the document's children identity — transcript rebuilds (/tree
+	 *  navigation, compaction, session load) go through Container.clear(),
+	 *  which replaces that array wholesale even at identical heights. */
+	let anchorCache: {
 		width: number;
 		contentHeight: number | undefined;
-		start: number | undefined;
+		children: readonly unknown[] | undefined;
+		anchors: UserAnchor[];
 	} | null = null;
 
-	const bar = new PinBar(() => pinnedText);
+	const bar = new PinBar(() => currentSelection()?.text ?? "");
 
 	// ─── Transcript access ────────────────────────────────────────
 
@@ -243,24 +259,50 @@ export default function stickyLastPrompt(pi: ExtensionAPI): void {
 		return Math.max(1, altScreen?.terminal.columns ?? 80);
 	}
 
-	/** Start offset (document rows) of the last user message; cached per
-	 *  width + contentHeight — those are what streaming/resize move. */
-	function lastUserMessageStart(sv: ScrollViewLike, width: number): number | undefined {
+	/** All user messages in document order; cached per width + contentHeight
+	 *  + document children identity — those are what streaming, resize, and
+	 *  transcript rebuilds move. */
+	function userAnchors(sv: ScrollViewLike, width: number): UserAnchor[] {
 		const contentHeight = sv.contentHeight;
+		const docChildren = (sv.child as { children?: unknown[] } | undefined)?.children;
+		const children = Array.isArray(docChildren) ? docChildren : undefined;
 		if (
-			offsetCache &&
-			offsetCache.width === width &&
-			offsetCache.contentHeight === contentHeight
+			anchorCache &&
+			anchorCache.width === width &&
+			anchorCache.contentHeight === contentHeight &&
+			anchorCache.children === children
 		) {
-			return offsetCache.start;
+			return anchorCache.anchors;
 		}
-		const found: { start?: number } = {};
-		const doc = sv.child as { children?: unknown[] } | undefined;
-		if (doc && Array.isArray(doc.children)) {
-			walkForLastUserMessage(doc.children, width, 0, found);
+		const anchors: UserAnchor[] = [];
+		if (children) {
+			collectUserAnchors(children, width, 0, anchors);
 		}
-		offsetCache = { width, contentHeight, start: found.start };
-		return found.start;
+		anchorCache = { width, contentHeight, children, anchors };
+		return anchors;
+	}
+
+	/** The user message the bar should pin: the latest one whose first line is
+	 *  visible or above — i.e. the newest message the viewport hasn't been
+	 *  scrolled up past yet. Undefined while no user message has reached the
+	 *  view (then the bar renders nothing). Resolved fresh on every paint so
+	 *  scrolling immediately re-pins the bar without any polling. */
+	function currentSelection(): UserAnchor | undefined {
+		const sv = primaryScrollView();
+		if (!sv) return undefined;
+		const width =
+			typeof sv.getContentWidth === "function" ? sv.getContentWidth(terminalWidth()) : terminalWidth();
+		const anchors = userAnchors(sv, Math.max(1, width));
+		const viewportHeight =
+			typeof sv.viewportHeight === "number" && sv.viewportHeight > 0
+				? sv.viewportHeight
+				: altScreen?.terminal.rows ?? 0;
+		const limit = sv.scrollTop + viewportHeight;
+		let selected: UserAnchor | undefined;
+		for (const anchor of anchors) {
+			if (anchor.start < limit) selected = anchor;
+		}
+		return selected;
 	}
 
 	// ─── Click → jump ─────────────────────────────────────────────
@@ -277,15 +319,13 @@ export default function stickyLastPrompt(pi: ExtensionAPI): void {
 	}
 
 	function jumpToPinnedMessage(): void {
+		const selected = currentSelection();
+		if (!selected) return;
 		const sv = primaryScrollView();
 		if (!sv) return;
-		const width =
-			typeof sv.getContentWidth === "function" ? sv.getContentWidth(terminalWidth()) : terminalWidth();
-		const start = lastUserMessageStart(sv, Math.max(1, width));
-		if (start === undefined) return;
 		// Land the message right below the bar; disableFollow keeps the view
 		// there instead of live-tail yanking it back (same as pi's search jump).
-		sv.scrollTo(Math.max(0, start - bar.renderedRows), { disableFollow: true });
+		sv.scrollTo(Math.max(0, selected.start - bar.renderedRows), { disableFollow: true });
 		altScreen?.requestRender();
 	}
 
@@ -350,7 +390,7 @@ export default function stickyLastPrompt(pi: ExtensionAPI): void {
 	function syncOverlay(): void {
 		const screen = altScreen;
 		if (!screen) return;
-		const want = screen.mode === "fullscreen" && pinnedText.length > 0;
+		const want = screen.mode === "fullscreen";
 		if (want && !overlay) {
 			const options: OverlayOptions = {
 				anchor: "top-left",
@@ -366,39 +406,14 @@ export default function stickyLastPrompt(pi: ExtensionAPI): void {
 		}
 	}
 
-	// ─── Session state ────────────────────────────────────────────
-
-	/** Seed the pin from the session tail so /reload or a fresh start on an
-	 *  existing session still shows something. Best effort. */
-	function restoreLastUserMessage(ctx: ExtensionContext): void {
-		if (pinnedText) return; // live session already captured one
-		try {
-			const entries = ctx.sessionManager.getEntries();
-			for (let i = entries.length - 1; i >= 0; i--) {
-				const entry = entries[i] as {
-					type?: string;
-					message?: { role?: string; content?: unknown };
-				};
-				if (entry.type !== "message" || entry.message?.role !== "user") continue;
-				const value = collapseWhitespace(extractUserText(entry.message.content));
-				if (value) {
-					pinnedText = value;
-					return;
-				}
-			}
-		} catch {
-			/* best effort */
-		}
-	}
-
 	// ─── Events ───────────────────────────────────────────────────
 
 	pi.on("session_start", async (_event, ctx) => {
 		if (ctx.mode !== "tui" || !ctx.hasUI) return;
-		restoreLastUserMessage(ctx);
-		// Persistent widget whose factory runs every frame: captures the tui
-		// reference, keeps the bar themed, installs the click patch once, and
-		// keeps the overlay in sync with mode/text — no polling timers.
+		// Widget registered once: captures the tui reference, keeps the bar
+		// themed, installs the click patch, and creates the overlay. The pin
+		// itself is resolved per paint inside PinBar.render() — scrolling,
+		// streaming, and reloads all re-pin the bar with no extra wiring.
 		ctx.ui.setWidget(WIDGET_ID, (tui, theme) => {
 			const screen = tui as AltScreen;
 			altScreen = screen;
@@ -409,14 +424,6 @@ export default function stickyLastPrompt(pi: ExtensionAPI): void {
 		});
 	});
 
-	pi.on("before_agent_start", (event) => {
-		if (typeof event.prompt !== "string") return;
-		const collapsed = collapseWhitespace(event.prompt);
-		if (!collapsed || collapsed === pinnedText) return;
-		pinnedText = collapsed;
-		altScreen?.requestRender(); // next frame's widget hook shows the bar
-	});
-
 	pi.on("session_shutdown", async (_event, ctx) => {
 		ctx.ui.setWidget(WIDGET_ID, undefined);
 		uninstallRendererPatches();
@@ -424,7 +431,6 @@ export default function stickyLastPrompt(pi: ExtensionAPI): void {
 		overlay = null;
 		altScreen = undefined;
 		bar.reset();
-		pinnedText = "";
-		offsetCache = null;
+		anchorCache = null;
 	});
 }

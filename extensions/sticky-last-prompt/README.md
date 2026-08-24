@@ -1,8 +1,9 @@
 # pi-sticky-last-prompt
 
-Pins your last user message as a one-line bar at the very top of pi's
-fullscreen TUI. Left-click the bar and the transcript scrolls so that
-message sits right below it — a quick way to jump back to what you asked.
+Pins the user message your viewport is currently in as a one-line bar at
+the very top of pi's fullscreen TUI. Left-click the bar and the transcript
+scrolls so that message sits right below it — a quick way to jump back to
+what you asked.
 
 ## Install
 
@@ -27,26 +28,32 @@ Or add it to the `packages` array in `~/.pi/agent/settings.json`:
 
 ## Behavior
 
-- After each prompt you send, the bar at the top of the screen updates to
-  show it (whitespace collapsed to one line, ellipsized if too long). The
-  bar is themed with your active theme (`accent` icon on a `selectedBg`
-  strip).
-- Left-click anywhere on the bar to scroll the transcript to that message.
-  The view lands just below the bar, and follow-tail is disabled so new
-  output doesn't yank you back — exactly like pi's built-in search jump.
+- The bar shows the latest user message the current viewport reaches:
+  while your newest prompt is still on screen (or you're scrolled below
+  it) that's the one pinned; scroll up past it and the bar falls back to
+  the second-to-last message, then the third-to-last, and so on. When no
+  user message has reached the viewport yet, the bar hides. Text is
+  whitespace-collapsed to one line, ellipsized if too long, and themed
+  with your active theme (`accent` icon on a `selectedBg` strip).
+- Left-click anywhere on the bar to scroll the transcript to the message
+  currently shown. The view lands just below the bar, and follow-tail is
+  disabled so new output doesn't yank you back — exactly like pi's
+  built-in search jump.
 - Everything else keeps stock behavior: mouse wheel, text selection,
   scrollbar, right-click paste, middle click, drags. The extension swallows
   precisely one gesture — a left-button press inside the bar row.
-- On `/reload` or when starting on an existing session, the bar seeds from
-  the last user message in the session file.
+- On `/reload` or when starting on an existing session, the bar re-derives
+  from the rendered transcript — no seeding step; it just tracks wherever
+  the viewport opens.
 
 Requires fullscreen TUI mode (pi ≥ 0.84); in regular mode the extension
 stays dormant.
 
 ## How it works
 
-The pin is a non-capturing full-width overlay anchored top-left, kept in
-sync by a per-frame widget hook (no polling timers). Click interception
+The pin is a non-capturing full-width overlay anchored top-left; its text
+is resolved from the live transcript tree on every paint (message offsets
+cached per width + content height), with no polling timers. Click interception
 wraps the renderer instance's internal selection handler — in pi 0.84.x,
 click events are consumed centrally before any public extension API can see
 them, and that handler is the only seam left. The same instance patching
@@ -62,5 +69,11 @@ stops working but nothing else breaks.
   non-capturing bar is the only overlay shown. When another overlay is on top
   (search box, dialogs), stock pi suppression applies.
 - The bar covers the top transcript row while shown.
-- If compaction or branch pruning removes the pinned message from the
-  rendered tree, a click jumps to the nearest remaining anchor instead.
+- Message offsets are re-measured whenever content height changes (e.g.
+  while a response streams in), which adds one extra render pass of the
+  transcript per such frame; between those frames everything is cached.
+- Transcript rebuilds (`/tree` navigation, compaction, session load) swap
+  the transcript container's children array wholesale; the offset cache
+  keys on that identity, so the bar re-derives immediately from whatever
+  messages the new branch renders — no stale labels even at identical
+  heights.

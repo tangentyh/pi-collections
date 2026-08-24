@@ -10,7 +10,7 @@ A **development-only npm workspace** that collects [pi](https://github.com/earen
 | [pi-scroll-speed](extensions/scroll-speed) | Lines scrolled per mouse-wheel notch in pi fullscreen mode |
 | [pi-footer-template](extensions/footer-template) | Render pi's footer from a configurable string template (the default mirrors the built-in footer plus the right-aligned account balance and absolute context-token usage); time and response throughput are reported in a notification configured the same way; multi-provider account balance mirrors pi-tidy-footer, plus provider quota status for Codex/Claude OAuth subscriptions mirrors pi-usage/pi-fancy-footer |
 | [pi-deepseek-pricing-by-time](extensions/deepseek-pricing-by-time) | Time-of-day-aware DeepSeek cost accounting: re-prices every DeepSeek assistant message with the official peak/off-peak rates in effect at the message's UTC timestamp, so session totals, the footer, the statusline cost segment, and exports match what DeepSeek bills |
-| [pi-sticky-last-prompt](extensions/sticky-last-prompt) | Pins your last user message as a one-line bar at the top of the fullscreen TUI; left-clicking the bar scrolls the transcript to that message |
+| [pi-sticky-last-prompt](extensions/sticky-last-prompt) | Pins the latest user message your viewport reaches as a one-line bar at the top of the fullscreen TUI (falls back to earlier prompts as you scroll up past them); left-clicking the bar scrolls the transcript to that message |
 
 Each package has its own `README.md` and `LICENSE` (MIT) in its directory — click the name to explore.
 

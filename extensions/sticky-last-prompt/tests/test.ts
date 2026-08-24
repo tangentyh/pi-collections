@@ -5,10 +5,11 @@
 // compiles sticky-last-prompt.ts itself into a temp dir inside the repo
 // (parameter properties need real TS; the location keeps `@earendil-works/*`
 // bare imports resolving against the workspace node_modules), installs the
-// extension's patches exactly the way pi's per-frame widget hook would, then
-// drives raw SGR mouse sequences through handleViewportInput.
+// extension's patches exactly the way pi's widget registration would, then
+// drives raw SGR mouse sequences through handleViewportInput and asserts the
+// bar's scroll-aware pin at several viewport positions.
 //
-// Run: npm run test:sticky-last-prompt   (or: node extensions/sticky-last-prompt/tests/test.ts)
+// Run: npm test -w pi-sticky-last-prompt   (or: node extensions/sticky-last-prompt/tests/test.ts)
 
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -67,14 +68,23 @@ async function runTests(stickyLastPrompt: (pi: ExtensionAPI) => void): Promise<v
 		clearFromCursor() {}, clearScreen() {}, setTitle() {}, setProgress() {},
 	};
 
-	// ── transcript: 5 lines, a real user message at offset 5, then scroll
-	// room so the jump target isn't clamped and the thumb is draggable ──
-	const spacer: Component = { render: () => Array.from({ length: 5 }, (_, i) => `pad ${i}`), invalidate() {} };
-	const tail: Component = { render: () => Array.from({ length: 25 }, (_, i) => `tail ${i}`), invalidate() {} };
-	const message = new UserMessageComponent("hello world");
+	// ── transcript with TWO user messages so the scroll-aware pin can be
+	// exercised: spacer(5) · msgA · fillerA(30) · msgB · tail(25, keeps the
+	// scrollbar live and gives room below msgB) ───────────────────────
+	const lines = (n: number, label: string): Component => ({
+		render: () => Array.from({ length: n }, (_, i) => `${label} ${i}`),
+		invalidate() {},
+	});
+	const spacer = lines(5, "pad");
+	const fillerA = lines(30, "filler-a");
+	const tail = lines(25, "tail");
+	const msgA = new UserMessageComponent("first question");
+	const msgB = new UserMessageComponent("second question");
 	const document_ = new Container();
 	document_.addChild(spacer);
-	document_.addChild(message);
+	document_.addChild(msgA);
+	document_.addChild(fillerA);
+	document_.addChild(msgB);
 	document_.addChild(tail);
 	const scrollView = new ScrollView(document_, {
 		primary: true,
@@ -113,41 +123,140 @@ async function runTests(stickyLastPrompt: (pi: ExtensionAPI) => void): Promise<v
 		mode: "tui",
 		hasUI: true,
 		ui: { setWidget: (_id: string, fn?: WidgetFactory) => { widgetFactory = fn; } },
-		sessionManager: { getEntries: () => [] as unknown[] },
 	};
 	await handlers["session_start"]({}, ctx);
-	widgetFactory!(tui, fakeTheme); // pi calls the widget hook every frame
+	widgetFactory!(tui, fakeTheme); // pi invokes the factory once at setWidget time
 	tui.start(); // sets altScreenActive
-	tui.renderNow(true);
-
-	handlers["before_agent_start"]({ prompt: "hello world" }); // pins the bar
-	widgetFactory!(tui, fakeTheme);
 	tui.renderNow(true);
 
 	assert.equal(tui.hasOverlayEntries, true, "bar overlay should be present");
 	assert.equal(tui.hasOverlay(), false, "patched hasOverlay: bar alone is not an overlay");
 
-	// ── scrollbar math (mirrors pi's getScrollbarGeometry) ─────────
-	const trackHeight = 24;
-	const contentHeight = scroll.contentHeight;
-	assert.ok(contentHeight > trackHeight, "fixture must overflow the viewport");
-	const thumbHeight = Math.max(
-		Math.min(2, trackHeight),
-		Math.min(trackHeight, Math.round((trackHeight * trackHeight) / contentHeight)),
+	// ── expected document geometry, measured through the same render path
+	// the extension uses (inner width excludes the scrollbar column) ────
+	const innerWidth = scrollView.getContentWidth(80);
+	const linesOf = (c: Component) => c.render(innerWidth).length;
+	const startA = linesOf(spacer); // msgA starts right after the spacer
+	const startB = startA + linesOf(msgA) + linesOf(fillerA);
+	assert.equal(
+		scroll.contentHeight,
+		startB + linesOf(msgB) + linesOf(tail),
+		"offset math must match the laid-out content height",
 	);
-	const maxScrollTop = contentHeight - trackHeight;
-	const maxThumbOffset = trackHeight - thumbHeight;
-	const thumbOffsetAt = (scrollTop: number) =>
-		maxScrollTop === 0 ? 0 : Math.round((scrollTop / maxScrollTop) * maxThumbOffset);
+	const trackHeight = scrollView.viewportHeight; // rows of transcript visible
+	assert.ok(scroll.contentHeight > trackHeight, "fixture must overflow the viewport");
+	// UserMessageComponent renders multiline even for one-liners (Box padding);
+	// guard it so the boundary asserts below prove multiline semantics.
+	assert.ok(linesOf(msgA) >= 2 && linesOf(msgB) >= 2, "fixture messages render multiline");
 
-	// ── click-to-jump works while the scrollbar is live ────────────
-	// Last user message starts at document row 5; landing just below the
-	// one-row bar → scrollTop 4.
+	// ── read what the bar currently pins ───────────────────────────
+	interface BarLike {
+		renderedRows: number;
+		render(width: number): string[];
+	}
+	const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, "");
+	const findBar = (): BarLike | undefined => {
+		const stack = (tui as unknown as { overlayStack?: readonly { component?: unknown }[] })
+			.overlayStack;
+		return stack
+			?.map((entry) => entry.component)
+			.find((c): c is BarLike => !!c && typeof (c as BarLike).renderedRows === "number");
+	};
+	const barText = (): string => {
+		const bar = findBar();
+		assert.ok(bar, "bar overlay component present");
+		return stripAnsi(bar.render(innerWidth).join(""));
+	};
+	const contentHeightOf = (view: ScrollView) =>
+		(view as unknown as { contentHeight: number }).contentHeight;
+	const scrollTo = (view: ScrollView, top: number) => {
+		view.scrollTo(top, { disableFollow: true });
+		tui.renderNow(true);
+	};
+
+	// ── selection tracks the viewport ──────────────────────────────
+	// At the very top only the FIRST message has been reached.
+	scrollTo(scrollView, 0);
+	assert.match(barText(), /first question/, "top of transcript pins the first message");
+	assert.doesNotMatch(barText(), /second question/);
+
+	// Click jumps to THAT message just below the one-row bar.
 	screen.handleViewportInput("\x1b[<0;11;1M"); // left press at x=10, y=0 (bar row)
-	assert.equal(scrollView.scrollTop, 4, "bar click scrolls the message below the bar");
+	assert.equal(scrollView.scrollTop, Math.max(0, startA - 1), "bar click lands the shown message below the bar");
+
+	// A message sitting exactly AT the viewport top — its first line under
+	// the bar — stays pinned; the flip only happens past the viewport's
+	// BOTTOM edge, so there's no show/hide flicker around the top row.
+	scrollTo(scrollView, startA);
+	assert.match(barText(), /first question/, "pinned while its first line is at the very top");
+
+	// Multiline across the top edge: anchors record each message's FIRST row
+	// (heights accumulated through the same render pass ScrollView paints),
+	// so a message whose early lines are already above/under the bar but
+	// whose tail is still on screen keeps the pin.
+	scrollTo(scrollView, startB + 1); // first lines above the top, tail visible
+	assert.match(barText(), /second question/, "straddling multiline message stays pinned");
+	scrollTo(scrollView, startB + linesOf(msgB)); // entirely above the top now
+	assert.match(barText(), /second question/, "fully-above multiline message stays pinned");
+
+	// Bottom of the transcript: the latest message governs.
+	const maxScrollTop = scroll.contentHeight - trackHeight;
+	scrollTo(scrollView, maxScrollTop);
+	assert.match(barText(), /second question/, "bottom of transcript pins the latest message");
+
+	screen.handleViewportInput("\x1b[<0;11;1M"); // click → jump to msgB - 1
+	assert.equal(scrollView.scrollTop, Math.max(0, startB - 1), "click at bottom jumps to the latest message");
+
+	// Boundary: msgB stays pinned while ANY of its rows is on screen…
+	scrollTo(scrollView, startB - trackHeight + 1); // first line at the viewport's last row
+	assert.match(barText(), /second question/, "message kept while its first line is visible");
+
+	// …and flips to the previous message once scrolled up past it entirely.
+	scrollTo(scrollView, startB - trackHeight); // first line now just below the viewport
+	assert.doesNotMatch(barText(), /second question/, "scrolled past → previous message pinned");
+	assert.match(barText(), /first question/, "…which is the second-to-last message");
+
+	// ── /tree-style rebuild ─────────────────────────────────────────
+	// pi navigates branches with chatContainer.clear() + re-render, which
+	// swaps the document's children array; the anchor cache keys on that
+	// identity, so the bar follows the new tree immediately — even if the
+	// rebuilt branch had the exact same rendered height.
+	const branchedDoc = new Container();
+	branchedDoc.addChild(lines(40, "lead-b")); // long preamble above its message
+	branchedDoc.addChild(new UserMessageComponent("branched question"));
+	branchedDoc.addChild(lines(25, "tail-b"));
+	const branchedView = new ScrollView(branchedDoc, { primary: true, scrollbar: "always" });
+	tui.setLayoutRoot(branchedView);
+	tui.renderNow(true);
+
+	// Above ALL user messages → nothing reached yet: the bar hides entirely
+	// (zero painted rows) and a click falls through instead of jumping.
+	scrollTo(branchedView, 0);
+	assert.equal(findBar()!.renderedRows, 0, "above all messages the bar paints zero rows");
+	assert.equal(barText(), "", "above all messages nothing is pinned");
+	screen.handleViewportInput("\x1b[<0;11;1M"); // press on the covered top row
+	assert.equal(branchedView.scrollTop, 0, "click falls through while nothing is pinned");
+
+	// Bottom of the branched transcript: its own latest message is pinned,
+	// and none of the old branch's prompts leak through.
+	scrollTo(branchedView, contentHeightOf(branchedView) - trackHeight);
+	assert.match(barText(), /branched question/, "bar follows the rebuilt transcript");
+	assert.doesNotMatch(barText(), /first question|second question/);
+
+	// Restoring the original layout root restores its pinning too.
+	tui.setLayoutRoot(scrollView);
+	tui.renderNow(true);
+	assert.match(barText(), /first question/, "original transcript re-pins after layout restore");
 
 	// ── scrollbar dragging works while only the bar overlay shows ──
 	// Press exactly at thumbTop + 1 so grabOffset is deterministically 1.
+	const thumbHeight = Math.max(
+		Math.min(2, trackHeight),
+		Math.min(trackHeight, Math.round((trackHeight * trackHeight) / scroll.contentHeight)),
+	);
+	const maxThumbOffset = trackHeight - thumbHeight;
+	const thumbOffsetAt = (scrollTop: number) =>
+		maxScrollTop === 0 ? 0 : Math.round((scrollTop / maxScrollTop) * maxThumbOffset);
 	const initialThumbOffset = thumbOffsetAt(scrollView.scrollTop);
 	const pressY = initialThumbOffset + 1;
 	const target = screen.getScrollbarTargetAt(79, pressY);
@@ -194,5 +303,7 @@ async function runTests(stickyLastPrompt: (pi: ExtensionAPI) => void): Promise<v
 	);
 	assert.equal(typeof TuiAltScreen.prototype.hasOverlay.call(tui), "boolean", "prototype method intact");
 
-	console.log("✓ sticky-last-prompt smoke tests passed (jump, drag, suppression, cleanup)");
+	console.log(
+		"✓ sticky-last-prompt smoke tests passed (scroll-aware pin, tree rebuild, jump, drag, suppression, cleanup)",
+	);
 }
