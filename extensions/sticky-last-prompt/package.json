@@ -1,6 +1,6 @@
 {
   "name": "pi-sticky-last-prompt",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Pins your last user message to the top of pi's fullscreen TUI; clicking the pinned bar jumps to that message in the transcript",
   "keywords": [
     "pi-package",
