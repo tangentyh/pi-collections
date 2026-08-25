@@ -1,6 +1,6 @@
 {
   "name": "pi-scroll-speed",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Lines scrolled per mouse-wheel notch in pi fullscreen mode",
   "keywords": ["pi-package", "pi-extension", "tui", "scroll", "mouse-wheel", "fullscreen", "settings", "cli-flag"],
   "license": "MIT",
