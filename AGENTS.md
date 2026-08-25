@@ -35,10 +35,10 @@ Currently in the collection:
   cost accounting: re-prices every DeepSeek assistant message at `message_end` with the
   official peak/off-peak rates in effect at the message's UTC timestamp, so session
   totals, the footer, the statusline cost segment, and exports match what DeepSeek bills
-- `sticky-last-prompt/` → npm `pi-sticky-last-prompt` — pins the latest user message your
-  viewport reaches as a one-line bar at the top of pi's fullscreen TUI (falls back to
-  earlier prompts as you scroll up past them); left-clicking the bar scrolls the transcript
-  to that message
+- `sticky-last-prompt/` → npm `pi-sticky-last-prompt` — pins the latest user message that has scrolled
+  above the viewport top as a one-line bar at the top of pi's fullscreen TUI (the bar hides while every
+  prompt is still on screen; older prompts take over as they leave the view); left-clicking the bar
+  scrolls the transcript to that message
 
 Keep this list here in `AGENTS.md` in sync with the table in `README.md` (same order, names, descriptions).
 When adding an extension, add it to both.

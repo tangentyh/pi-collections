@@ -1,9 +1,9 @@
 # pi-sticky-last-prompt
 
-Pins the user message your viewport is currently in as a one-line bar at
-the very top of pi's fullscreen TUI. Left-click the bar and the transcript
-scrolls so that message sits right below it — a quick way to jump back to
-what you asked.
+Pins the most recent user message you have scrolled past as a one-line
+bar at the very top of pi's fullscreen TUI. Left-click the bar and the
+transcript scrolls so that message sits right below it — a quick way to
+jump back to what you asked.
 
 ## Install
 
@@ -28,13 +28,14 @@ Or add it to the `packages` array in `~/.pi/agent/settings.json`:
 
 ## Behavior
 
-- The bar shows the latest user message the current viewport reaches:
-  while your newest prompt is still on screen (or you're scrolled below
-  it) that's the one pinned; scroll up past it and the bar falls back to
-  the second-to-last message, then the third-to-last, and so on. When no
-  user message has reached the viewport yet, the bar hides. Text is
-  whitespace-collapsed to one line, ellipsized if too long, and themed
-  with your active theme (`accent` icon on a `selectedBg` strip).
+- The bar shows the latest user message that has scrolled above the top
+  of the viewport — the newest prompt you can no longer see, so the
+  pinned jump always targets something off-screen. While every prompt
+  asked so far is still visible the bar hides; scroll down past your
+  newest prompt and it becomes the pin, then older prompts take over one
+  by one as they leave the view too. Text is whitespace-collapsed to one
+  line, ellipsized if too long, and themed with your active theme
+  (`accent` icon on a `selectedBg` strip).
 - Left-click anywhere on the bar to scroll the transcript to the message
   currently shown. The view lands just below the bar, and follow-tail is
   disabled so new output doesn't yank you back — exactly like pi's

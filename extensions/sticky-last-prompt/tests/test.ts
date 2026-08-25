@@ -174,32 +174,36 @@ async function runTests(stickyLastPrompt: (pi: ExtensionAPI) => void): Promise<v
 		tui.renderNow(true);
 	};
 
-	// ── selection tracks the viewport ──────────────────────────────
-	// At the very top only the FIRST message has been reached.
+	// ── selection tracks what has scrolled out of view ──────────────────────────────
+	// At the very top no prompt is above the viewport edge yet: the bar
+	// hides entirely (zero painted rows) and a click falls through.
 	scrollTo(scrollView, 0);
-	assert.match(barText(), /first question/, "top of transcript pins the first message");
-	assert.doesNotMatch(barText(), /second question/);
+	assert.equal(findBar()!.renderedRows, 0, "top of transcript: nothing scrolled away, zero rows");
+	assert.equal(barText(), "", "top of transcript pins nothing");
 
-	// Click jumps to THAT message just below the one-row bar.
+	// A message with its FIRST line exactly at the viewport top is still
+	// visible (right under the bar) — not pinned either.
+	scrollTo(scrollView, startA);
+	assert.doesNotMatch(barText(), /first|second/, "message at the very top row isn't pinned");
+
+	// One row further down its first line is gone: it becomes the pin, and
+	// clicking jumps back so it sits just below the one-row bar.
+	scrollTo(scrollView, startA + 1);
+	assert.match(barText(), /first question/, "scrolled-past message gets pinned");
+	assert.doesNotMatch(barText(), /second question/);
 	screen.handleViewportInput("\x1b[<0;11;1M"); // left press at x=10, y=0 (bar row)
 	assert.equal(scrollView.scrollTop, Math.max(0, startA - 1), "bar click lands the shown message below the bar");
 
-	// A message sitting exactly AT the viewport top — its first line under
-	// the bar — stays pinned; the flip only happens past the viewport's
-	// BOTTOM edge, so there's no show/hide flicker around the top row.
-	scrollTo(scrollView, startA);
-	assert.match(barText(), /first question/, "pinned while its first line is at the very top");
-
 	// Multiline across the top edge: anchors record each message's FIRST row
 	// (heights accumulated through the same render pass ScrollView paints),
-	// so a message whose early lines are already above/under the bar but
-	// whose tail is still on screen keeps the pin.
+	// so a message whose early lines are above the top but whose tail is
+	// still on screen is already the pin — jumping restores its head.
 	scrollTo(scrollView, startB + 1); // first lines above the top, tail visible
-	assert.match(barText(), /second question/, "straddling multiline message stays pinned");
+	assert.match(barText(), /second question/, "straddling multiline message pins once its first line leaves");
 	scrollTo(scrollView, startB + linesOf(msgB)); // entirely above the top now
 	assert.match(barText(), /second question/, "fully-above multiline message stays pinned");
 
-	// Bottom of the transcript: the latest message governs.
+	// Bottom of the transcript: the latest prompt governs.
 	const maxScrollTop = scroll.contentHeight - trackHeight;
 	scrollTo(scrollView, maxScrollTop);
 	assert.match(barText(), /second question/, "bottom of transcript pins the latest message");
@@ -207,14 +211,13 @@ async function runTests(stickyLastPrompt: (pi: ExtensionAPI) => void): Promise<v
 	screen.handleViewportInput("\x1b[<0;11;1M"); // click → jump to msgB - 1
 	assert.equal(scrollView.scrollTop, Math.max(0, startB - 1), "click at bottom jumps to the latest message");
 
-	// Boundary: msgB stays pinned while ANY of its rows is on screen…
-	scrollTo(scrollView, startB - trackHeight + 1); // first line at the viewport's last row
-	assert.match(barText(), /second question/, "message kept while its first line is visible");
-
-	// …and flips to the previous message once scrolled up past it entirely.
-	scrollTo(scrollView, startB - trackHeight); // first line now just below the viewport
-	assert.doesNotMatch(barText(), /second question/, "scrolled past → previous message pinned");
-	assert.match(barText(), /first question/, "…which is the second-to-last message");
+	// Exact flip point: while msgB's first line is ON screen (even at the
+	// very top row) msgA governs; one row later the pin crosses to msgB.
+	scrollTo(scrollView, startB); // msgB's first line right at the top
+	assert.doesNotMatch(barText(), /second question/, "message at the top row still counts as visible");
+	assert.match(barText(), /first question/, "…so the previous prompt keeps the pin");
+	scrollTo(scrollView, startB + 1);
+	assert.match(barText(), /second question/, "one row down, the pin flips to the newer prompt");
 
 	// ── /tree-style rebuild ─────────────────────────────────────────
 	// pi navigates branches with chatContainer.clear() + re-render, which
@@ -229,8 +232,9 @@ async function runTests(stickyLastPrompt: (pi: ExtensionAPI) => void): Promise<v
 	tui.setLayoutRoot(branchedView);
 	tui.renderNow(true);
 
-	// Above ALL user messages → nothing reached yet: the bar hides entirely
-	// (zero painted rows) and a click falls through instead of jumping.
+	// Above all user messages → nothing has scrolled out of view: the bar
+	// hides entirely (zero painted rows) and a click falls through instead
+	// of jumping.
 	scrollTo(branchedView, 0);
 	assert.equal(findBar()!.renderedRows, 0, "above all messages the bar paints zero rows");
 	assert.equal(barText(), "", "above all messages nothing is pinned");
@@ -243,10 +247,11 @@ async function runTests(stickyLastPrompt: (pi: ExtensionAPI) => void): Promise<v
 	assert.match(barText(), /branched question/, "bar follows the rebuilt transcript");
 	assert.doesNotMatch(barText(), /first question|second question/);
 
-	// Restoring the original layout root restores its pinning too.
+	// Restoring the original layout root restores its state too — including
+	// its own scrollTop, left just past msgB by the flip-point test above.
 	tui.setLayoutRoot(scrollView);
 	tui.renderNow(true);
-	assert.match(barText(), /first question/, "original transcript re-pins after layout restore");
+	assert.match(barText(), /second question/, "original transcript re-pins after layout restore");
 
 	// ── scrollbar dragging works while only the bar overlay shows ──
 	// Press exactly at thumbTop + 1 so grabOffset is deterministically 1.
@@ -353,7 +358,7 @@ async function runTests(stickyLastPrompt: (pi: ExtensionAPI) => void): Promise<v
 		resumeDoc.addChild(new UserMessageComponent("live question"));
 		resumeDoc.addChild(lines(40, "live-filler"));
 		resumeTui.renderNow(true);
-		resumeScrollTo(0);
+		resumeScrollTo(contentHeightOf(resumeView)); // clamps to the bottom
 		assert.match(resumeBarText(), /live question/, "instance A tracks the live transcript");
 
 		// Teardown: instance A must fully uninstall its renderer patches…
@@ -408,7 +413,13 @@ async function runTests(stickyLastPrompt: (pi: ExtensionAPI) => void): Promise<v
 			"click after resume jumps to the pinned message",
 		);
 		resumeScrollTo(0);
-		assert.match(resumeBarText(), /resumed question one/, "top falls back to the earliest message");
+		assert.equal(resumeBarText(), "", "top of the resumed transcript pins nothing yet");
+		resumeScreen.handleViewportInput("\x1b[<0;11;1M");
+		assert.equal(resumeView.scrollTop, 0, "click falls through while nothing is pinned");
+		resumeScrollTo(
+			linesOf(new UserMessageComponent("resumed question one")) + 30 + 1,
+		); // just past question two's first line
+		assert.match(resumeBarText(), /resumed question two/, "resumed transcript pins per scroll too");
 		assert.doesNotMatch(resumeBarText(), /three/, "no static last-message seed survives resume");
 
 		await b.reg["session_shutdown"]({ type: "session_shutdown", reason: "shutdown" }, b.ctx);

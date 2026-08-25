@@ -4,10 +4,11 @@
  *
  * Behavior:
  *   - A one-line bar pins to the very top of the screen showing the latest
- *     user message the current viewport reaches: while the newest prompt is
- *     still on screen (or you're below it) that's the one pinned; once you
- *     scroll up past it, the bar falls back to the second-to-last, and so
- *     on (whitespace collapsed, ellipsized to fit).
+ *     user message that has scrolled above the viewport's top edge — the
+ *     newest prompt you can no longer see. While everything asked is still
+ *     on screen the bar hides (jumping to visible text adds nothing); once
+ *     a prompt leaves the view it becomes the pin, and older prompts take
+ *     over one by one as they leave too (whitespace collapsed, ellipsized).
  *   - Left-clicking the bar scrolls the transcript so the currently shown
  *     message sits right below the bar. Everything else (wheel, selection,
  *     drag, other buttons) behaves exactly as stock pi.
@@ -63,7 +64,6 @@ interface MouseEventLike {
 interface ScrollViewLike {
 	scrollTop: number;
 	contentHeight?: number;
-	viewportHeight?: number;
 	child?: unknown;
 	getContentWidth?(width: number): number;
 	scrollTo(scrollTop: number, options?: { disableFollow?: boolean }): void;
@@ -282,22 +282,20 @@ export default function stickyLastPrompt(pi: ExtensionAPI): void {
 		return anchors;
 	}
 
-	/** The user message the bar should pin: the latest one whose first line is
-	 *  visible or above — i.e. the newest message the viewport hasn't been
-	 *  scrolled up past yet. Undefined while no user message has reached the
-	 *  view (then the bar renders nothing). Resolved fresh on every paint so
-	 *  scrolling immediately re-pins the bar without any polling. */
+	/** The user message the bar should pin: the latest one whose first row is
+	 *  above the viewport's top edge — the newest prompt no longer on screen,
+	 *  so the pinned jump always targets something invisible. A message that
+	 *  is still (even partly) visible is never pinned, and with no prompt
+	 *  above the top yet nothing is selected (the bar renders nothing).
+	 *  Resolved fresh on every paint so scrolling immediately re-pins the bar
+	 *  without any polling. */
 	function currentSelection(): UserAnchor | undefined {
 		const sv = primaryScrollView();
 		if (!sv) return undefined;
 		const width =
 			typeof sv.getContentWidth === "function" ? sv.getContentWidth(terminalWidth()) : terminalWidth();
 		const anchors = userAnchors(sv, Math.max(1, width));
-		const viewportHeight =
-			typeof sv.viewportHeight === "number" && sv.viewportHeight > 0
-				? sv.viewportHeight
-				: altScreen?.terminal.rows ?? 0;
-		const limit = sv.scrollTop + viewportHeight;
+		const limit = sv.scrollTop;
 		let selected: UserAnchor | undefined;
 		for (const anchor of anchors) {
 			if (anchor.start < limit) selected = anchor;
