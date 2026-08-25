@@ -4,11 +4,14 @@
  *
  * Behavior:
  *   - A one-line bar pins to the very top of the screen showing the latest
- *     user message that has scrolled above the viewport's top edge — the
- *     newest prompt you can no longer see. While everything asked is still
- *     on screen the bar hides (jumping to visible text adds nothing); once
- *     a prompt leaves the view it becomes the pin, and older prompts take
+ *     prompt that has scrolled above the viewport's top edge — the newest
+ *     message you can no longer see. While everything asked is still on
+ *     screen the bar hides (jumping to visible text adds nothing); once a
+ *     message leaves the view it becomes the pin, and older prompts take
  *     over one by one as they leave too (whitespace collapsed, ellipsized).
+ *     Skill invocations count as prompts too: pi renders them as collapsible
+ *     `[skill] name` blocks rather than user messages, so they are pinned
+ *     under their skill name.
  *   - Left-clicking the bar scrolls the transcript so the currently shown
  *     message sits right below the bar. Everything else (wheel, selection,
  *     drag, other buttons) behaves exactly as stock pi.
@@ -36,6 +39,7 @@
  */
 
 import {
+	SkillInvocationMessageComponent,
 	UserMessageComponent,
 	type ExtensionAPI,
 	type Theme,
@@ -129,9 +133,12 @@ interface UserAnchor {
 
 /**
  * Accumulate document line offsets down the transcript tree, recording EVERY
- * UserMessageComponent's start row and text. Recurses only into plain
- * Containers (pure concatenation of children) so offsets match exactly what
- * the transcript ScrollView paints.
+ * prompt component's start row and text — UserMessageComponent plus
+ * SkillInvocationMessageComponent (a `/skill` invocation renders as a
+ * collapsible `[skill] name` block, not as a user message, and with no
+ * trailing args it is the whole prompt). Recurses only into plain Containers
+ * (pure concatenation of children) so offsets match exactly what the
+ * transcript ScrollView paints.
  */
 function collectUserAnchors(
 	children: readonly unknown[],
@@ -146,6 +153,13 @@ function collectUserAnchors(
 			);
 			if (text) found.push({ start: offset, text });
 			offset += measureLines(child, width);
+		} else if (child instanceof SkillInvocationMessageComponent) {
+			// Label mirrors pi's own collapsed rendering: "[skill] name".
+			const name = (child as unknown as { skillBlock?: { name?: unknown } }).skillBlock?.name;
+			if (typeof name === "string" && name.trim()) {
+				found.push({ start: offset, text: `[skill] ${collapseWhitespace(name)}` });
+			}
+			offset += measureLines(child, width);
 		} else if (isPlainContainer(child)) {
 			offset = collectUserAnchors(child.children, width, offset, found);
 		} else {
@@ -155,7 +169,8 @@ function collectUserAnchors(
 	return offset;
 }
 
-/** Pull plain text out of a stored user message content field. */
+/** Pull plain text out of a stored user message content field (skill blocks
+ *  are handled separately — see collectUserAnchors). */
 function extractUserText(content: unknown): string {
 	if (typeof content === "string") return content;
 	if (!Array.isArray(content)) return "";

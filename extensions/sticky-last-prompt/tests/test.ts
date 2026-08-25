@@ -25,6 +25,7 @@ import {
 	type TUI,
 } from "@earendil-works/pi-tui";
 import {
+	SkillInvocationMessageComponent,
 	UserMessageComponent,
 	initTheme,
 	type ExtensionAPI,
@@ -423,6 +424,101 @@ async function runTests(stickyLastPrompt: (pi: ExtensionAPI) => void): Promise<v
 		assert.doesNotMatch(resumeBarText(), /three/, "no static last-message seed survives resume");
 
 		await b.reg["session_shutdown"]({ type: "session_shutdown", reason: "shutdown" }, b.ctx);
+	}
+
+	// ── skill invocations are prompts too ──────────────────────────
+	// pi renders a `/skill` invocation as a collapsible SkillInvocation-
+	// MessageComponent ([skill] name), NOT a UserMessageComponent — and with
+	// no trailing args that block is the whole prompt. It must pin under its
+	// skill name instead of being invisible to the anchor walk.
+	{
+		const skillTui = new TuiAltScreen(fakeTerminal);
+		interface SkillInternals {
+			handleViewportInput(data: string): unknown;
+		}
+		const skillScreen = skillTui as unknown as SkillInternals;
+		const skillHandlers: Record<string, (...args: any[]) => unknown> = {};
+		const skillDoc = new Container();
+		const skillView = new ScrollView(skillDoc, { primary: true, scrollbar: "always" });
+		skillTui.setLayoutRoot(skillView);
+		skillTui.start();
+		const skillSpacer = lines(5, "pad-s");
+		const skillBlock = new SkillInvocationMessageComponent({
+			name: "commit",
+			location: "/skills/commit/SKILL.md",
+			content: "commit body",
+			userMessage: undefined,
+		}); // userMessage absent → no UserMessageComponent rendered at all
+		const skillFiller = lines(30, "filler-s");
+		const afterSkill = new UserMessageComponent("plain question after skill");
+		skillDoc.addChild(skillSpacer);
+		skillDoc.addChild(skillBlock);
+		skillDoc.addChild(skillFiller);
+		skillDoc.addChild(afterSkill);
+		skillDoc.addChild(lines(25, "tail-s"));
+		// Fresh extension instance (a live /reload-style binding), wired to THIS
+		// renderer — reusing an earlier instance's factory would keep its
+		// existing overlay on the old renderer and never show the bar here.
+		let skillFactory: WidgetFactory | undefined;
+		stickyLastPrompt({
+			on: (event: string, handler: (...args: any[]) => unknown) => {
+				skillHandlers[event] = handler;
+			},
+		} as unknown as ExtensionAPI);
+		await skillHandlers["session_start"]({ type: "session_start", reason: "startup" }, {
+			mode: "tui",
+			hasUI: true,
+			ui: { setWidget: (_id: string, fn?: WidgetFactory) => {
+				skillFactory = fn;
+			} },
+		});
+		skillFactory!(skillTui, fakeTheme);
+		skillTui.renderNow(true);
+
+		const skillBarText = (): string => {
+			const stack = (skillTui as unknown as { overlayStack?: readonly { component?: unknown }[] })
+				.overlayStack;
+			const bar = stack
+				?.map((entry) => entry.component)
+				.find((c): c is BarLike => !!c && typeof (c as BarLike).renderedRows === "number");
+			assert.ok(bar, "skill scenario: bar overlay present");
+			return stripAnsi(bar.render(innerWidth).join(""));
+		};
+		const skillScrollTo = (top: number) => {
+			skillView.scrollTo(top, { disableFollow: true });
+			skillTui.renderNow(true);
+		};
+
+		const startSkill = linesOf(skillSpacer); // skill block right after the spacer
+		const startAfter = startSkill + linesOf(skillBlock) + linesOf(skillFiller);
+
+		// Bottom: the later plain prompt governs.
+		skillScrollTo(contentHeightOf(skillView)); // clamps to bottom
+		assert.match(skillBarText(), /plain question after skill/, "bottom pins the latest plain prompt");
+		skillScreen.handleViewportInput("\x1b[<0;11;1M");
+		assert.equal(
+			skillView.scrollTop,
+			Math.max(0, startAfter - 1),
+			"click jumps to the plain prompt below the skill block",
+		);
+
+		// Just past the skill block's first line: it becomes the pin, labeled
+		// exactly like pi's own collapsed rendering.
+		skillScrollTo(startSkill + 1);
+		assert.match(skillBarText(), /\[skill\] commit/, "scrolled-past skill invocation pins as [skill] name");
+		assert.doesNotMatch(skillBarText(), /plain question/, "skill pin doesn't leak the later prompt");
+		skillScreen.handleViewportInput("\x1b[<0;11;1M"); // left press on the bar row
+		assert.equal(skillView.scrollTop, Math.max(0, startSkill - 1), "click on a pinned skill jumps back to it");
+
+		// Above everything → nothing pinned (the skill block alone must not
+		// resurrect a stale selection).
+		skillScrollTo(0);
+		assert.equal(skillBarText(), "", "top of transcript with only a skill block pins nothing");
+
+		await skillHandlers["session_shutdown"]({ type: "session_shutdown", reason: "shutdown" }, {
+			ui: { setWidget: () => {} },
+		});
+		skillTui.stop();
 	}
 
 	// ── uninstall (session_shutdown) removes instance overrides ────

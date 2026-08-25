@@ -28,14 +28,16 @@ Or add it to the `packages` array in `~/.pi/agent/settings.json`:
 
 ## Behavior
 
-- The bar shows the latest user message that has scrolled above the top
-  of the viewport — the newest prompt you can no longer see, so the
-  pinned jump always targets something off-screen. While every prompt
-  asked so far is still visible the bar hides; scroll down past your
-  newest prompt and it becomes the pin, then older prompts take over one
-  by one as they leave the view too. Text is whitespace-collapsed to one
-  line, ellipsized if too long, and themed with your active theme
-  (`accent` icon on a `selectedBg` strip).
+- The bar shows the latest prompt that has scrolled above the top of the
+  viewport — the newest message you can no longer see, so the pinned jump
+  always targets something off-screen. While every prompt asked so far is
+  still visible the bar hides; scroll down past your newest prompt and it
+  becomes the pin, then older prompts take over one by one as they leave
+  the view too. Text is whitespace-collapsed to one line, ellipsized if
+  too long, and themed with your active theme (`accent` icon on a
+  `selectedBg` strip). Skill invocations count as prompts too — pi renders
+  them as collapsible `[skill] name` blocks rather than user messages —
+  and are pinned under that same `[skill] <name>` label.
 - Left-click anywhere on the bar to scroll the transcript to the message
   currently shown. The view lands just below the bar, and follow-tail is
   disabled so new output doesn't yank you back — exactly like pi's
