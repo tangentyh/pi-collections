@@ -38,5 +38,5 @@
     "@types/node": "^22.0.0",
     "typescript": "^5.5.0"
   },
-  "files": ["sticky-last-prompt.ts", "README.md", "LICENSE"]
+  "files": ["sticky-last-prompt.ts", "README.md", "CHANGELOG.md", "LICENSE"]
 }

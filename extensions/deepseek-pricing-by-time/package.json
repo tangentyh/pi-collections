@@ -28,9 +28,5 @@
     "@types/node": "^22.0.0",
     "typescript": "^5.5.0"
   },
-  "files": [
-    "deepseek-pricing-by-time.ts",
-    "README.md",
-    "LICENSE"
-  ]
+  "files": ["deepseek-pricing-by-time.ts", "README.md", "CHANGELOG.md", "LICENSE"]
 }
