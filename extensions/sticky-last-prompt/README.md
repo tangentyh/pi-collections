@@ -1,8 +1,8 @@
 # pi-sticky-last-prompt
 
-Pins the most recent user message you have scrolled past as a one-line
-bar at the very top of pi's fullscreen TUI. Left-click the bar and the
-transcript scrolls so that message sits right below it — a quick way to
+Pins the most recent user message you have scrolled completely past as a
+one-line bar at the very top of pi's fullscreen TUI. Left-click the bar and
+the transcript scrolls so that message sits right below it — a quick way to
 jump back to what you asked.
 
 ## Install
@@ -28,16 +28,19 @@ Or add it to the `packages` array in `~/.pi/agent/settings.json`:
 
 ## Behavior
 
-- The bar shows the latest prompt that has scrolled above the top of the
-  viewport — the newest message you can no longer see, so the pinned jump
-  always targets something off-screen. While every prompt asked so far is
-  still visible the bar hides; scroll down past your newest prompt and it
-  becomes the pin, then older prompts take over one by one as they leave
-  the view too. Text is whitespace-collapsed to one line, ellipsized if
-  too long, and themed with your active theme (`accent` icon on a
-  `selectedBg` strip). Skill invocations count as prompts too — pi renders
-  them as collapsible `[skill] name` blocks rather than user messages —
-  and are pinned under that same `[skill] <name>` label.
+- The bar shows the latest prompt that has scrolled completely above the
+  top of the viewport — the newest message with not a single row left on
+  screen, so the pinned jump always targets something invisible. While a
+  prompt is crossing the top edge (head gone, tail still visible) the bar
+  hides rather than duplicate text sitting directly beneath it; scroll down
+  until the message is entirely out of view and it becomes the pin. While a
+  newer prompt is crossing, older fully-hidden prompts do not keep the pin —
+  the bar just stays blank until the newer one clears the edge. Text is
+  whitespace-collapsed to one line, ellipsized if too long, and themed with
+  your active theme (`accent` icon on a `selectedBg` strip). Skill
+  invocations count as prompts too — pi renders them as collapsible
+  `[skill] name` blocks rather than user messages — and are pinned under
+  that same `[skill] <name>` label.
 - Left-click anywhere on the bar to scroll the transcript to the message
   currently shown. The view lands just below the bar, and follow-tail is
   disabled so new output doesn't yank you back — exactly like pi's

@@ -36,8 +36,8 @@ Currently in the collection:
   official peak/off-peak rates in effect at the message's UTC timestamp, so session
   totals, the footer, the statusline cost segment, and exports match what DeepSeek bills
 - `sticky-last-prompt/` → npm `pi-sticky-last-prompt` — pins the latest user message that has scrolled
-  above the viewport top as a one-line bar at the top of pi's fullscreen TUI (the bar hides while every
-  prompt is still on screen; older prompts take over as they leave the view); left-clicking the bar
+  completely above the viewport top as a one-line bar at the top of pi's fullscreen TUI (while a prompt
+  is still crossing the top edge the bar hides rather than duplicate it); left-clicking the bar
   scrolls the transcript to that message
 
 Keep this list here in `AGENTS.md` in sync with the table in `README.md` (same order, names, descriptions).

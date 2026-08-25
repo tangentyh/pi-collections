@@ -4,11 +4,14 @@
  *
  * Behavior:
  *   - A one-line bar pins to the very top of the screen showing the latest
- *     prompt that has scrolled above the viewport's top edge — the newest
- *     message you can no longer see. While everything asked is still on
- *     screen the bar hides (jumping to visible text adds nothing); once a
- *     message leaves the view it becomes the pin, and older prompts take
- *     over one by one as they leave too (whitespace collapsed, ellipsized).
+ *     prompt that has scrolled completely above the viewport's top edge —
+ *     the newest message with not a single row left on screen, so the
+ *     pinned jump always targets something invisible. While that newest
+ *     above-the-edge message still has rows on screen the bar hides rather
+ *     than duplicate text painted directly beneath it; only once the message
+ *     is entirely out of view does it become the pin (whitespace collapsed,
+ *     ellipsized). While a newer prompt is still crossing the edge, older
+ *     fully-hidden prompts do NOT keep the pin — the bar just stays blank.
  *     Skill invocations count as prompts too: pi renders them as collapsible
  *     `[skill] name` blocks rather than user messages, so they are pinned
  *     under their skill name.
@@ -127,6 +130,8 @@ function isPlainContainer(value: unknown): value is { children: readonly unknown
 interface UserAnchor {
 	/** First document row of the message. */
 	start: number;
+	/** First document row BELOW the message (exclusive end). */
+	end: number;
 	/** Collapsed single-line text of the message. */
 	text: string;
 }
@@ -151,15 +156,19 @@ function collectUserAnchors(
 			const text = collapseWhitespace(
 				extractUserText((child as unknown as { text?: unknown }).text),
 			);
-			if (text) found.push({ start: offset, text });
-			offset += measureLines(child, width);
+			// measureLines was already needed for offset accumulation — reuse it
+			// to record the message's extent so visibility can be decided exactly.
+			const height = measureLines(child, width);
+			if (text) found.push({ start: offset, end: offset + height, text });
+			offset += height;
 		} else if (child instanceof SkillInvocationMessageComponent) {
 			// Label mirrors pi's own collapsed rendering: "[skill] name".
 			const name = (child as unknown as { skillBlock?: { name?: unknown } }).skillBlock?.name;
+			const height = measureLines(child, width);
 			if (typeof name === "string" && name.trim()) {
-				found.push({ start: offset, text: `[skill] ${collapseWhitespace(name)}` });
+				found.push({ start: offset, end: offset + height, text: `[skill] ${collapseWhitespace(name)}` });
 			}
-			offset += measureLines(child, width);
+			offset += height;
 		} else if (isPlainContainer(child)) {
 			offset = collectUserAnchors(child.children, width, offset, found);
 		} else {
@@ -298,12 +307,13 @@ export default function stickyLastPrompt(pi: ExtensionAPI): void {
 	}
 
 	/** The user message the bar should pin: the latest one whose first row is
-	 *  above the viewport's top edge — the newest prompt no longer on screen,
-	 *  so the pinned jump always targets something invisible. A message that
-	 *  is still (even partly) visible is never pinned, and with no prompt
-	 *  above the top yet nothing is selected (the bar renders nothing).
-	 *  Resolved fresh on every paint so scrolling immediately re-pins the bar
-	 *  without any polling. */
+	 *  above the viewport's top edge — but ONLY once none of its rows are
+	 *  still painted. A message straddling the edge would have the bar
+	 *  duplicate text sitting directly beneath it, so the bar renders nothing
+	 *  until that message has fully left the view; while a newer prompt is
+	 *  straddling, an older fully-hidden prompt does not keep the pin either
+	 *  (a blank bar beats a stale target). Resolved fresh on every paint so
+	 *  scrolling immediately re-pins or clears the bar without any polling. */
 	function currentSelection(): UserAnchor | undefined {
 		const sv = primaryScrollView();
 		if (!sv) return undefined;
@@ -315,6 +325,8 @@ export default function stickyLastPrompt(pi: ExtensionAPI): void {
 		for (const anchor of anchors) {
 			if (anchor.start < limit) selected = anchor;
 		}
+		// Still has rows on screen → hide instead of duplicating them.
+		if (selected && selected.end > limit) return undefined;
 		return selected;
 	}
 

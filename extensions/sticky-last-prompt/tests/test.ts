@@ -187,22 +187,28 @@ async function runTests(stickyLastPrompt: (pi: ExtensionAPI) => void): Promise<v
 	scrollTo(scrollView, startA);
 	assert.doesNotMatch(barText(), /first|second/, "message at the very top row isn't pinned");
 
-	// One row further down its first line is gone: it becomes the pin, and
-	// clicking jumps back so it sits just below the one-row bar.
+	// One row further down its first line is gone — but its body is still
+	// painted right beneath where the bar would sit, so the bar hides rather
+	// than duplicate it. Only once the WHOLE message is above the top does
+	// it become the pin; clicking then jumps back so it sits just below the
+	// one-row bar.
 	scrollTo(scrollView, startA + 1);
-	assert.match(barText(), /first question/, "scrolled-past message gets pinned");
+	assert.equal(findBar()!.renderedRows, 0, "straddling message: bar hides instead of duplicating it");
+	scrollTo(scrollView, startA + linesOf(msgA)); // entirely above the top now
+	assert.match(barText(), /first question/, "fully scrolled-past message gets pinned");
 	assert.doesNotMatch(barText(), /second question/);
 	screen.handleViewportInput("\x1b[<0;11;1M"); // left press at x=10, y=0 (bar row)
 	assert.equal(scrollView.scrollTop, Math.max(0, startA - 1), "bar click lands the shown message below the bar");
 
-	// Multiline across the top edge: anchors record each message's FIRST row
-	// (heights accumulated through the same render pass ScrollView paints),
-	// so a message whose early lines are above the top but whose tail is
-	// still on screen is already the pin — jumping restores its head.
-	scrollTo(scrollView, startB + 1); // first lines above the top, tail visible
-	assert.match(barText(), /second question/, "straddling multiline message pins once its first line leaves");
+	// Multiline across the top edge: anchors record each message's extent
+	// (start and end rows from the same render pass ScrollView paints), so a
+	// message straddling the edge — head gone, tail on screen — keeps the
+	// bar blank instead of duplicating itself; it pins only once entirely out.
+	scrollTo(scrollView, startB + 1); // head above the top, tail visible → blank
+	assert.equal(findBar()!.renderedRows, 0, "straddling multiline message blanks the bar");
+	assert.doesNotMatch(barText(), /second question/, "no duplication while its tail is still painted");
 	scrollTo(scrollView, startB + linesOf(msgB)); // entirely above the top now
-	assert.match(barText(), /second question/, "fully-above multiline message stays pinned");
+	assert.match(barText(), /second question/, "fully-above multiline message pins");
 
 	// Bottom of the transcript: the latest prompt governs.
 	const maxScrollTop = scroll.contentHeight - trackHeight;
@@ -213,12 +219,17 @@ async function runTests(stickyLastPrompt: (pi: ExtensionAPI) => void): Promise<v
 	assert.equal(scrollView.scrollTop, Math.max(0, startB - 1), "click at bottom jumps to the latest message");
 
 	// Exact flip point: while msgB's first line is ON screen (even at the
-	// very top row) msgA governs; one row later the pin crosses to msgB.
+	// very top row), msgB isn't above the edge yet and fully-hidden msgA
+	// keeps the pin. One row down, msgB straddles the edge — the bar blanks
+	// instead of falling back to msgA or duplicating msgB; only once msgB
+	// has left the view entirely does it take the pin over.
 	scrollTo(scrollView, startB); // msgB's first line right at the top
 	assert.doesNotMatch(barText(), /second question/, "message at the top row still counts as visible");
 	assert.match(barText(), /first question/, "…so the previous prompt keeps the pin");
 	scrollTo(scrollView, startB + 1);
-	assert.match(barText(), /second question/, "one row down, the pin flips to the newer prompt");
+	assert.equal(findBar()!.renderedRows, 0, "one row down, msgB straddles and blanks the bar (no fallback)");
+	scrollTo(scrollView, startB + linesOf(msgB));
+	assert.match(barText(), /second question/, "once fully out of view, msgB takes the pin");
 
 	// ── /tree-style rebuild ─────────────────────────────────────────
 	// pi navigates branches with chatContainer.clear() + re-render, which
@@ -249,7 +260,8 @@ async function runTests(stickyLastPrompt: (pi: ExtensionAPI) => void): Promise<v
 	assert.doesNotMatch(barText(), /first question|second question/);
 
 	// Restoring the original layout root restores its state too — including
-	// its own scrollTop, left just past msgB by the flip-point test above.
+	// its own scrollTop, left just past msgB's last row by the flip-point
+	// test above.
 	tui.setLayoutRoot(scrollView);
 	tui.renderNow(true);
 	assert.match(barText(), /second question/, "original transcript re-pins after layout restore");
@@ -418,8 +430,10 @@ async function runTests(stickyLastPrompt: (pi: ExtensionAPI) => void): Promise<v
 		resumeScreen.handleViewportInput("\x1b[<0;11;1M");
 		assert.equal(resumeView.scrollTop, 0, "click falls through while nothing is pinned");
 		resumeScrollTo(
-			linesOf(new UserMessageComponent("resumed question one")) + 30 + 1,
-		); // just past question two's first line
+			linesOf(new UserMessageComponent("resumed question one")) +
+				30 +
+				linesOf(new UserMessageComponent("resumed question two")),
+		); // entirely past question two
 		assert.match(resumeBarText(), /resumed question two/, "resumed transcript pins per scroll too");
 		assert.doesNotMatch(resumeBarText(), /three/, "no static last-message seed survives resume");
 
@@ -502,9 +516,9 @@ async function runTests(stickyLastPrompt: (pi: ExtensionAPI) => void): Promise<v
 			"click jumps to the plain prompt below the skill block",
 		);
 
-		// Just past the skill block's first line: it becomes the pin, labeled
-		// exactly like pi's own collapsed rendering.
-		skillScrollTo(startSkill + 1);
+		// Entirely past the skill block: it becomes the pin, labeled exactly
+		// like pi's own collapsed rendering.
+		skillScrollTo(startSkill + linesOf(skillBlock));
 		assert.match(skillBarText(), /\[skill\] commit/, "scrolled-past skill invocation pins as [skill] name");
 		assert.doesNotMatch(skillBarText(), /plain question/, "skill pin doesn't leak the later prompt");
 		skillScreen.handleViewportInput("\x1b[<0;11;1M"); // left press on the bar row
