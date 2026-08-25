@@ -99,7 +99,8 @@ then GitHub-generated notes, as fallbacks).
 Release flow:
 
 ```bash
-# bump version in extensions/<name>/package.json (+ a CHANGELOG.md entry), commit,
+# bump version in extensions/<name>/package.json (+ a CHANGELOG.md entry;
+# refresh keywords too), commit,
 # push main, THEN tag the pushed commit and push the tag:
 git tag -a <npm-package-name>@<version> -m "..." && git push origin <npm-package-name>@<version>
 ```
