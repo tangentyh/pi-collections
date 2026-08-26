@@ -239,7 +239,7 @@ export function getFieldValues(
 	const { totals, latestCacheHitRate } = sessionUsage;
 	const model = ctx.model;
 	// `auto` resolves per provider: CNY for the extension's Chinese providers
-	// (deepseek, moonshotai-cn, siliconflow, zhipu), USD for everyone else.
+	// (deepseek, moonshotai-cn, siliconflow, zai-coding-cn), USD for everyone else.
 	const costCurrency =
 		options.costCurrency === AUTO_CURRENCY
 			? resolveAutoCurrency(model?.provider)

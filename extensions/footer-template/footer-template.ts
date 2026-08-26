@@ -136,10 +136,10 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 	let activeCurrency = AUTO_CURRENCY;
 
 	// Account balance behind the {balanceLabel}/{balanceStatus} fields.
-	// Supported providers mirror
-	// pi-tidy-footer:
-	// deepseek, moonshotai-cn, openrouter, siliconflow, zhipu. Refreshed at most
-	// once per cache window (mirroring pi-deepseek-usage's 30s cache), on
+	// Supported providers mirror pi-tidy-footer, with Zhipu replaced by
+	// bigmodel.cn/Z.ai's console account-report endpoints:
+	// deepseek, moonshotai-cn, openrouter, siliconflow, zai-coding-cn/zai.
+	// Refreshed at most once per cache window (mirroring pi-deepseek-usage's 30s cache), on
 	// session start, model selection, and after each turn; fetch errors are
 	// not cached and render as `<Label>: <err:code>` until the next refresh.
 	// The numeric value is kept alongside the rendered text so the balance can
@@ -530,7 +530,7 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 			void refreshFxIfStale().then(() => requestFooterRender?.());
 			if (activeCurrency === AUTO_CURRENCY) {
 				ctx.ui.notify(
-					`Currency: auto — CNY for Chinese providers (deepseek, moonshotai-cn, siliconflow, zhipu), USD otherwise.`,
+					`Currency: auto — CNY for Chinese providers (deepseek, moonshotai-cn, siliconflow, zai-coding-cn), USD otherwise.`,
 					"info",
 				);
 			} else {

@@ -3,7 +3,11 @@
  *
  * Ported from https://github.com/eriiic7z/pi-tidy-footer: queries each
  * supported provider's balance endpoint (DeepSeek, Moonshot, OpenRouter,
- * SiliconFlow, Zhipu) and renders the result as `<Label>: $17.35`. The
+ * SiliconFlow, and bigmodel.cn/Z.ai) and renders the result as
+ * `<Label>: $17.35`. bigmodel.cn retired its PaaS monetary-balance endpoint
+ * (`account/billing` answers 404 for every key), so the BigModel and Z.AI
+ * balances come from the undocumented console account-report endpoint
+ * (`query-customer-account-report`, see makeAccountReportParse below). The
  * DeepSeek handling keeps the richer semantics of
  * https://github.com/shaftoe/pi-deepseek-usage: USD is preferred, otherwise
  * the first reported currency is used. Auth goes through pi's model registry
@@ -88,13 +92,15 @@ export const BALANCE_PROVIDERS: Record<string, BalanceProviderConfig> = {
 			return Number.isFinite(amount) ? { amount, currency: "CNY" } : undefined;
 		},
 	},
-	zhipu: {
-		url: "https://open.bigmodel.cn/api/paas/v4/account/billing",
-		label: "Zhipu",
-		parse: (data) => {
-			const amount = toAmount(data?.balance);
-			return Number.isFinite(amount) ? { amount, currency: "CNY" } : undefined;
-		},
+	"zai-coding-cn": {
+		url: "https://open.bigmodel.cn/api/biz/account/query-customer-account-report",
+		label: "BigModel",
+		parse: makeAccountReportParse("CNY"),
+	},
+	zai: {
+		url: "https://api.z.ai/api/biz/account/query-customer-account-report",
+		label: "Z.AI",
+		parse: makeAccountReportParse("USD"),
 	},
 };
 
@@ -108,6 +114,36 @@ function toBalanceValue(amount: unknown, currency: unknown): BalanceValue | unde
 	const value = toAmount(amount);
 	const ccy = typeof currency === "string" && currency ? currency : undefined;
 	return Number.isFinite(value) && ccy ? { amount: value, currency: ccy } : undefined;
+}
+
+/**
+ * Parser for the bigmodel.cn / Z.ai console account-report endpoint
+ * (`/api/biz/account/query-customer-account-report`), keyed by host because
+ * `open.bigmodel.cn`/`bigmodel.cn` bill in CNY while `api.z.ai` serves USD.
+ * Undocumented console API that replaces bigmodel.cn's retired PaaS
+ * `account/billing`; it answers HTTP 200 with application-level failures in
+ * its JSON envelope (`success: false`, code 1001 = no Authorization header
+ * received, 401 = invalid or expired token), so failures throw
+ * `BalanceError`: credential problems keep the familiar `http401` code,
+ * anything else becomes `api{code}`. On success, `data.balance` holds the
+ * account balance; exponent-notation numbers (`0E-9`) parse via Number()
+ * like any other JSON number.
+ */
+function makeAccountReportParse(currency: string) {
+	return (data: any): BalanceValue | undefined => {
+		if (data && typeof data === "object" && !Array.isArray(data)) {
+			const code = typeof data.code === "number" && data.code >= 400 ? data.code : undefined;
+			if (data.success === false || code !== undefined) {
+				const msg = typeof data.msg === "string" ? data.msg : "";
+				throw new BalanceError(
+					`Balance request failed: ${msg || "application-level failure"}`,
+					code !== undefined ? (code === 401 || code === 1001 ? "http401" : `api${code}`) : "api",
+				);
+			}
+		}
+		const amount = toAmount(data?.data?.balance);
+		return Number.isFinite(amount) ? { amount, currency } : undefined;
+	};
 }
 
 /**

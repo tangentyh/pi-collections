@@ -112,7 +112,7 @@ These fields provide the values shown by pi's built-in footer:
 | `{thinkingLevel}` | `• low` — thinking level with a leading bullet; `• thinking off` when the level is `off`; empty when the model has no reasoning |
 | `{modelProvider}` | `(anthropic)` — provider in parentheses when multiple providers are available; otherwise empty |
 | `{extensionStatuses}` | Persistent extension statuses, sorted and joined on one line |
-| `{balanceLabel}` | Account-balance or quota label of the active provider, e.g. `DeepSeek` or `Claude`; empty when there is no status to show (see [Account balance and provider quota](#account-balance-and-provider-quota)) |
+| `{balanceLabel}` | Account-balance or quota label of the active provider, e.g. `DeepSeek`, `Claude`, or `BigModel`; empty when there is no status to show | (see [Account balance and provider quota](#account-balance-and-provider-quota)) |
 | `{balanceStatus}` | Account-balance status without the label: `$17.35`, `No balance`, or `<err:...>`; for the OAuth quota providers only the error or `No quota` text renders here — the healthy quota status comes from the breakdown fields below; empty when there is no status to show |
 | `{balanceDelta}` | Balance change since the first successful fetch of the session — current balance minus first balance — always signed and converted to the configured display currency: `-$0.15` means the balance went down by $0.15 since the first fetch (money spent), `+$10.00` means it went up (e.g. a top-up); the default template renders it next to `{balanceStatus}` with a `Δ` prefix (`Δ-$0.15`); empty when the active provider has no recorded baseline or no monetary balance, when the baseline's and the current balance's currencies differ, or when the delta rounds to zero |
 | `{quota5hUsed}` | Used percentage for the 5-hour quota window, e.g. `23%`; `—` when the window exists but usage is unknown; empty when unavailable |
@@ -200,8 +200,9 @@ converted to a configurable display currency, like
 
 The default is `auto`: the currency follows the active provider. CNY is used
 for the extension's Chinese providers — `deepseek`, `moonshotai-cn`,
-`siliconflow`, `zhipu` — and USD for every other provider: `openrouter`,
-the quota providers `openai-codex` and `anthropic`, and anything else. So a
+`siliconflow`, `zai-coding-cn` — and USD for every other provider:
+`openrouter`, `zai` (Z.ai international), the quota providers `openai-codex`
+and `anthropic`, and anything else. So a
 DeepSeek model shows its cost and balance as `¥...`, an OpenRouter model as
 `$...`, and switching models switches the currency with them.
 
@@ -231,15 +232,25 @@ active provider, like [pi-tidy-footer](https://github.com/eriiic7z/pi-tidy-foote
 | `moonshotai-cn` | Moonshot | `GET https://api.moonshot.cn/v1/users/me/balance` | CNY |
 | `openrouter` | OpenRouter | `GET https://openrouter.ai/api/v1/credits` | USD |
 | `siliconflow` | SiliconFlow | `GET https://api.siliconflow.cn/v1/user/info` | CNY |
-| `zhipu` | Zhipu | `GET https://open.bigmodel.cn/api/paas/v4/account/billing` | CNY |
+| `zai-coding-cn` | BigModel | `GET https://open.bigmodel.cn/api/biz/account/query-customer-account-report` | CNY |
+| `zai` | Z.AI | `GET https://api.z.ai/api/biz/account/query-customer-account-report` | USD |
 
-Both fields are empty when the active model's provider is not in the table.
+bigmodel.cn retired its PaaS monetary-balance endpoint (`account/billing`
+answers 404 for every key), so the BigModel and Z.AI balances come from their
+undocumented console account-report endpoints above (the same API is also
+reachable at `https://bigmodel.cn/api/biz/account/query-customer-account-report`).
+They accept the regular API key like every other endpoint in this table, but
+— unlike the rest — they answer HTTP 200 with application-level failures in
+their JSON envelope. Both fields are empty when the active model's provider
+is not in the table.
 The balance is fetched with the provider's API key from pi's model registry and
 cached for 30 seconds to avoid excessive API calls; a provider switch
 refetches immediately. When the account reports no balance, `{balanceStatus}`
 renders as `No balance`. Fetch failures render as `<err:code>` (`http401` for
-a missing or invalid API key, `fetch` for network errors, `badjson` for
-malformed responses) and are retried on the next refresh.
+a missing or invalid API key — including the account-report envelope's code
+1001/401 credential failures, which arrive under HTTP 200, `fetch` for
+network errors, `badjson` for malformed responses, `api{code}` for any other
+application-level envelope failure) and are retried on the next refresh.
 The balance refreshes on session start, on model selection, and after each
 turn, and is recalculated without restarting pi. When the configured display
 currency differs from the balance's own currency, the amount is converted with
