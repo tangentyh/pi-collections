@@ -130,48 +130,33 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 	let runStats = emptyRunStats();
 	let requestFooterRender: (() => void) | undefined;
 	let customFooterInstalled = false;
-	// Display currency from settings (`footerTemplate.costCurrency`): a
-	// concrete code or "auto" (the default, resolving per provider); kept
-	// mutable so /set-currency applies without reloading pi.
+	// Display currency from settings; mutable so /set-currency applies live.
 	let activeCurrency = AUTO_CURRENCY;
 
-	// Account balance behind the {balanceLabel}/{balanceStatus} fields.
-	// Supported providers mirror pi-tidy-footer, with Zhipu replaced by
-	// bigmodel.cn/Z.ai's console account-report endpoints:
-	// deepseek, moonshotai-cn, openrouter, siliconflow, zai-coding-cn/zai.
-	// Refreshed at most once per cache window (mirroring pi-deepseek-usage's 30s cache), on
-	// session start, model selection, and after each turn; fetch errors are
-	// not cached and render as `<Label>: <err:code>` until the next refresh.
-	// The numeric value is kept alongside the rendered text so the balance can
-	// be converted into the configured display currency.
+	// Account balance behind {balanceLabel}/{balanceStatus}; providers listed
+	// in BALANCE_PROVIDERS (balance.ts). Refreshed at most once per cache
+	// window on session start, model selection, and turn end; fetch errors
+	// are not cached and render as `<Label>: <err:code>` until the next
+	// refresh. The numeric value rides along for currency conversion.
 	let balanceText = "";
 	let balanceValue: BalanceValue | undefined;
 	let balanceProvider: string | undefined;
 	let balanceFreshUntil = 0;
 	let balanceFetching: Promise<void> | undefined;
 	let balanceFetchSeq = 0;
-	// The first successfully fetched balance per provider, backing the
-	// {balanceDelta} field (current − first; positive while money was topped
-	// up since the first fetch). Keyed per provider so a provider switch keeps
-	// each provider's baseline; cleared on session start/shutdown.
+	// First successfully fetched balance per provider in this session,
+	// backing {balanceDelta} (sign semantics: see formatBalanceDeltaField);
+	// cleared on session start/shutdown.
 	const firstBalances = new Map<string, BalanceValue>();
-	// Provider of the currently active model, tracked synchronously from live
-	// event ctxs (see activeQuotaProvider).
+	// Tracked synchronously from live event ctxs (see activeQuotaProvider).
 	let activeBalanceProvider: string | undefined;
 
-	// Provider quota status behind the {balanceLabel}/{balanceStatus} fields
-	// for the OAuth
-	// subscription providers (openai-codex, anthropic), mirroring
-	// pi-fancy-footer's provider-status widget and pi-usage: the rolling quota
-	// windows render as `<Label>: 5h:23% used 7d:41% used` (compact status) with
-	// a reset countdown for windows at or above 75% used; the default template
-	// renders the structured breakdown fields ({quota5hUsed}, {quota7dUsed},
-	// {creditsRemaining}, ...) instead, with {balanceStatus} empty while quota
-	// data is available. Quota is only fetched while the active
-	// model uses OAuth (API-key models have no subscription quota). Refreshed
-	// at most once per cache window (3 min, like pi-usage) on the same events
-	// as the balance; fetch errors are not cached and render as
-	// `<Label>: <err:code>` until the next refresh.
+	// Provider quota status behind the same fields for the OAuth subscription
+	// providers (openai-codex, anthropic), mirroring pi-fancy-footer's
+	// provider-status widget and pi-usage; rendering details live in quota.ts.
+	// Only fetched while the active model uses OAuth (API-key models have no
+	// subscription quota), under the same fetch/cache/error policy as the
+	// balance above.
 	let quotaText = "";
 	let quotaValue: QuotaValue | undefined;
 	let quotaProvider: string | undefined;
@@ -188,8 +173,8 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 		const provider = resolveQuotaProvider(ctx.model?.provider);
 		const usingOAuth =
 			!!ctx.model && (ctx.modelRegistry.isUsingOAuth(ctx.model) ?? false);
-		// Synchronous only: the event ctx is live right now; capture the
-		// registry too, so nothing reads the ctx after an await below.
+		// Capture the registry synchronously: reading event-ctx getters after a
+		// replacement/reload throws.
 		const modelRegistry = ctx.modelRegistry;
 		if (!provider || !usingOAuth) {
 			activeQuotaProvider = undefined;
@@ -203,8 +188,7 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 		}
 		activeQuotaProvider = provider;
 		const now = Date.now();
-		// A provider switch invalidates the old value immediately so a stale
-		// provider's fields are never shown while the replacement is fetched.
+		// A provider switch clears stale fields immediately.
 		if (quotaProvider !== undefined && quotaProvider !== provider) {
 			quotaText = "";
 			quotaValue = undefined;
@@ -212,20 +196,17 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 			quotaFreshUntil = 0;
 			requestFooterRender?.();
 		}
-		// A provider switch invalidates the cache: refetch immediately.
+		// Skip when this provider's data is still fresh or in flight.
 		if (quotaProvider === provider && (now < quotaFreshUntil || quotaFetching)) return;
 		const label = QUOTA_PROVIDERS[provider].label;
-		// The sequence token guards the finally-block: when the provider
-		// switches mid-fetch, the superseded request must not clear the
-		// in-flight flag of its replacement.
+		// Sequence token: superseded requests must not clear their
+		// replacement's in-flight flag.
 		const seq = ++quotaFetchSeq;
 		const fetching = (async () => {
 			try {
 				const value = await fetchQuota(provider, modelRegistry);
-				// The provider or its auth may have changed while the request
-				// was in flight; an API-key model switch also retires the quota
-				// (it clears activeQuotaProvider). The captured ctx is never
-				// read here.
+				// Discard superseded results (provider/auth may have changed
+				// mid-fetch); the captured ctx is never read here.
 				if (activeQuotaProvider !== provider) return;
 				quotaText = formatQuotaText(label, value);
 				quotaValue = value;
@@ -248,8 +229,8 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 
 	const refreshBalance = (ctx: ExtensionContext): void => {
 		const provider = resolveBalanceProvider(ctx.model?.provider);
-		// Synchronous only: the event ctx is live right now; capture the
-		// registry too, so nothing reads the ctx after an await below.
+		// Capture the registry synchronously: reading event-ctx getters after a
+		// replacement/reload throws.
 		const modelRegistry = ctx.modelRegistry;
 		if (!provider) {
 			activeBalanceProvider = undefined;
@@ -266,16 +247,13 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 		// A provider switch invalidates the cache: refetch immediately.
 		if (balanceProvider === provider && (now < balanceFreshUntil || balanceFetching)) return;
 		const label = BALANCE_PROVIDERS[provider].label;
-		// The sequence token guards the finally-block: when the provider
-		// switches mid-fetch, the superseded request must not clear the
-		// in-flight flag of its replacement.
+		// Sequence token: superseded requests must not clear their
+		// replacement's in-flight flag.
 		const seq = ++balanceFetchSeq;
 		const fetching = (async () => {
 			try {
 				const value = await fetchBalance(provider, modelRegistry);
-				// The provider may have changed while the request was in
-				// flight; the captured ctx is never read here (it may be
-				// stale after a session replacement or reload).
+				// Discard superseded results (provider may have changed mid-fetch).
 				if (activeBalanceProvider !== provider) return;
 				if (value && !firstBalances.has(provider)) firstBalances.set(provider, value);
 				balanceText = formatBalanceText(label, value);
@@ -331,8 +309,8 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 		if (!ctx.hasUI) return;
 		const configuration = resolveFooterConfiguration(ctx);
 		activeCurrency = configuration.costCurrency;
-		// Like the footer template, an explicit empty notification template
-		// opts out; only an unset one falls back to the default format.
+		// An explicitly empty notification template opts out; unset falls
+		// back to the default format.
 		if (configuration.notificationTemplate === "") return;
 		ctx.ui.notify(
 			renderRunNotification(
@@ -358,8 +336,6 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 	});
 	pi.on("thinking_level_select", requestRender);
 
-	// Like pi-deepseek-usage, refresh the account balance after each turn;
-	// the provider quota status refreshes on the same cadence.
 	pi.on("turn_end", (_event, ctx) => {
 		refreshBalance(ctx);
 		refreshQuota(ctx);
@@ -405,8 +381,8 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 
 		const configuration = resolveFooterConfiguration(ctx);
 		activeCurrency = configuration.costCurrency;
-		// No configured template falls back to the built-in-shaped default; an
-		// explicit empty template opts out and keeps pi's built-in footer.
+		// Unset falls back to the built-in-shaped default; "" opts out to pi's
+		// built-in footer.
 		const footerTemplate = configuration.template ?? DEFAULT_FOOTER_TEMPLATE;
 		if (!footerTemplate) {
 			if (customFooterInstalled) {
@@ -416,8 +392,8 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 			return;
 		}
 		// Exchange rates for the configured display currency, fetched once per
-		// 24h; USD needs none. The footer reads the currency and rates lazily
-		// on every render, so a later /set-currency switch is picked up immediately.
+		// 24h; USD needs none. Read lazily per render, so later /set-currency
+		// switches pick up automatically.
 		void refreshFxIfStale().then(() => requestFooterRender?.());
 
 		ctx.ui.setFooter((tui, theme, footerData) => {
@@ -519,14 +495,12 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 				ctx.ui.notify(`Invalid currency: "${ccy}". Use AUTO or one of: ${CURRENCY_LIST}`, "error");
 				return;
 			}
-			// Persist in global settings; a project-level `costCurrency` shadows
-			// the global value via the settings merge, so re-resolve to report
-			// the effective currency.
 			writeGlobalCostCurrency(ccy === "AUTO" ? AUTO_CURRENCY : ccy);
+			// Re-resolve after persisting: a project-level `costCurrency` may
+			// shadow the global value via the settings merge.
 			activeCurrency = resolveFooterConfiguration(ctx).costCurrency;
 			requestFooterRender?.();
-			// Kick off a rate fetch so the effective currency converts right
-			// away; the footer picks the rates up when the fetch completes.
+			// Prime the rate table so the effective currency converts right away.
 			void refreshFxIfStale().then(() => requestFooterRender?.());
 			if (activeCurrency === AUTO_CURRENCY) {
 				ctx.ui.notify(

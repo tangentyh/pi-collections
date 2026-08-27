@@ -47,11 +47,9 @@ export const AUTO_CURRENCY = "auto";
 const CNY_PROVIDERS = new Set(["deepseek", "moonshotai-cn", "siliconflow", "zai-coding-cn"]);
 
 /**
- * The currency `auto` resolves to for a provider: CNY for the extension's
- * Chinese providers (deepseek, moonshotai-cn, siliconflow, zai-coding-cn),
- * USD for every other provider — openrouter, zai, openai-codex, anthropic,
- * and any provider the extension does not offer. DeepSeek keeps its prefix
- * match, like resolveBalanceProvider.
+ * The currency `auto` resolves to for a provider (see CNY_PROVIDERS; every
+ * other provider bills in USD). DeepSeek keeps its prefix match, like
+ * resolveBalanceProvider.
  */
 export function resolveAutoCurrency(provider: string | undefined): string {
 	if (!provider) return "USD";

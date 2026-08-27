@@ -42,24 +42,21 @@ function readScrollSpeedSettings(file: string): ScrollSpeedSettings | undefined 
 	return undefined;
 }
 
+/** Precedence: CLI flag > trusted project settings > global settings > default. */
 function resolveWheelLines(pi: ExtensionAPI, ctx: ExtensionContext): number {
-	// 1. CLI flag: `pi --wheel-lines 8`
 	const flag = pi.getFlag("wheel-lines");
 	if (typeof flag === "string") {
 		const fromFlag = parseWheelLines(Number(flag));
 		if (fromFlag !== undefined) return fromFlag;
 	}
-	// 2. Project settings, only when the project is trusted.
 	if (ctx.isProjectTrusted()) {
 		const project = readScrollSpeedSettings(join(ctx.cwd, CONFIG_DIR_NAME, "settings.json"));
 		const fromProject = project ? parseWheelLines(project.wheelLines) : undefined;
 		if (fromProject !== undefined) return fromProject;
 	}
-	// 3. Global settings.
 	const global = readScrollSpeedSettings(join(getAgentDir(), "settings.json"));
 	const fromGlobal = global ? parseWheelLines(global.wheelLines) : undefined;
 	if (fromGlobal !== undefined) return fromGlobal;
-	// 4. Built-in default.
 	return DEFAULT_WHEEL_LINES;
 }
 
@@ -95,11 +92,9 @@ export default function (pi: ExtensionAPI): void {
 			if (typeof altScreen.wheelScrollLines === "number") {
 				altScreen.wheelScrollLines = wheelLines;
 			}
-			// Preserve any previously installed custom editor.
 			if (previousFactory) {
 				return previousFactory(tui, theme, keybindings);
 			}
-			// Recreate the standard editor so nothing else changes.
 			return new CustomEditor(tui, theme, keybindings);
 		});
 	});

@@ -16,10 +16,8 @@ const FIELD_PATTERN = /\{([A-Za-z][A-Za-z0-9_]*)\}/g;
 // Square-bracketed sections are omitted when all contained fields are empty
 // (groups cannot nest).
 const OPTIONAL_GROUP_PATTERN = /\[([^\[\]\r\n]*)\]/g;
-// The marker that splits a line: everything after the first "{:right}" outside
-// an optional section is right-aligned as one unit. The bare ":right" form is
-// still accepted (deprecated); "{:right}" is tried first so it is consumed
-// whole, and inserting anything inside the braces (e.g. "{ :right}") escapes it.
+// Line-split markers: content after the first occurrence outside an optional
+// section renders right-aligned as one unit. Bare ":right" is deprecated.
 const RIGHT_ALIGN_MARKER = "{:right}";
 const LEGACY_RIGHT_ALIGN_MARKER = ":right";
 
@@ -108,14 +106,10 @@ export function getRunStatsFields(
 }
 
 /**
- * The `{balanceStatus}` value: the reported balance converted to the configured
- * display currency, e.g. `DeepSeek: €15.23`. When the conversion is not
- * possible (no cached rate for a non-USD display currency), the balance
- * falls back to its native currency formatting (`fallback`). The amount is
- * always shown with two decimals, keeping the documented format. OAuth quota
- * providers (Codex, Claude) have no monetary balance; their quota status is
- * rendered from the structured breakdown fields below, while `{balanceStatus}`
- * only carries their error or `No quota` text.
+ * The `{balanceStatus}` value: the reported balance converted to the
+ * configured display currency, e.g. `DeepSeek: €15.23`; falls back to
+ * native-currency formatting (`fallback`) when no cached rate allows
+ * conversion.
  */
 function formatBalanceField(
 	label: string,
@@ -136,15 +130,11 @@ function formatBalanceField(
 }
 
 /**
- * The `{balanceDelta}` value: current balance minus the first balance
- * fetched, always signed and converted to the configured display currency
- * like `{balanceStatus}` — `-$0.15` means the balance went down by $0.15
- * since the first fetch (money spent), `+$10.00` means it went up (e.g. a
- * top-up). Empty when the active provider has no recorded baseline or no
- * balance, when the baseline's currency differs from the current balance's,
- * or when the delta rounds to zero. When the conversion is not possible
- * (no cached rate), the delta falls back to its native currency formatting,
- * like the balance amount.
+ * The `{balanceDelta}` value: current balance minus the first fetched
+ * balance, signed and converted to the display currency like `{balanceStatus}`
+ * — `-$0.15` means money spent since the first fetch, `+$10.00` a top-up.
+ * Empty without a baseline or balance, on a currency mismatch, or when the
+ * delta rounds to zero; falls back to native formatting like the balance.
  */
 function formatBalanceDeltaField(
 	first: BalanceValue | undefined,
@@ -217,10 +207,9 @@ export interface FooterFieldOptions {
 	/**
 	 * Provider quota status for OAuth subscription providers (Codex, Claude):
 	 * "", "<Label>: 5h:23% used 7d:41% used", or "<Label>: <err:...>".
-	 * Non-empty only while the active model's provider reports quota windows;
-	 * it takes precedence over the monetary balance in `{balanceLabel}`.
-	 * While quota data is available, `{balanceStatus}` stays empty and the
-	 * breakdown fields render the windows instead.
+	 * Takes precedence over the monetary balance in `{balanceLabel}`; while
+	 * quota data is available, `{balanceStatus}` stays empty and the
+	 * structured breakdown fields render the windows instead.
 	 */
 	quotaText: string;
 	/** The structured quota data behind the explicit quota template fields. */
@@ -238,8 +227,6 @@ export function getFieldValues(
 ): Record<string, string> {
 	const { totals, latestCacheHitRate } = sessionUsage;
 	const model = ctx.model;
-	// `auto` resolves per provider: CNY for the extension's Chinese providers
-	// (deepseek, moonshotai-cn, siliconflow, zai-coding-cn), USD for everyone else.
 	const costCurrency =
 		options.costCurrency === AUTO_CURRENCY
 			? resolveAutoCurrency(model?.provider)
@@ -256,12 +243,8 @@ export function getFieldValues(
 	const branch = footerData.getGitBranch();
 	const sessionName = ctx.sessionManager.getSessionName();
 
-	// The composite balance text, e.g. `DeepSeek: $17.35`: quota status wins
-	// over the monetary balance. OAuth subscription providers (Codex, Claude)
-	// have no monetary balance; their quota status replaces the balance value
-	// for them. The label is only exposed while a status exists, so the
-	// template's `[{balanceLabel}: ...]` section disappears entirely when
-	// there is nothing to show.
+	// Quota status wins over the monetary balance (precedence and rendering:
+	// see FooterFieldOptions.quotaText).
 	const balanceProviderLabel = options.balanceProvider
 		? (BALANCE_PROVIDERS[options.balanceProvider]?.label ?? options.balanceProvider)
 		: "";
@@ -285,10 +268,7 @@ export function getFieldValues(
 	const balanceLabel = compositeBalance
 		? (options.quotaText ? quotaProviderLabel : balanceProviderLabel)
 		: "";
-	// The structured breakdown fields render the healthy quota status in the
-	// default template, so {balanceStatus} stays empty while quota data is
-	// available; only the error/`No quota` text (there is no data to break
-	// down) and the monetary balance render through it.
+	// Error/No-quota text carries no structured data to break down.
 	const quotaBreakdownShown = !!options.quotaText && !!options.quotaValue;
 	const balanceStatus =
 		compositeBalance && !quotaBreakdownShown
@@ -309,12 +289,10 @@ export function getFieldValues(
 			(totals.cacheRead > 0 || totals.cacheWrite > 0) && latestCacheHitRate !== undefined
 				? latestCacheHitRate.toFixed(1)
 				: "",
-		// Overrides the run-stats cost: in footer templates {cost} is the
-		// cumulative session total, so it can sit next to the session token
-		// fields. Keep zero visible, like the other numeric fields.
+		// Both shadow their run-stat fields: templates show them as cumulative
+		// session totals next to the token fields. {cost} keeps zero visible;
+		// {totalTokens} hides zero like the session-token fields.
 		cost: formatCost(totals.cost, costCurrency, options.fxRates),
-		// Overrides the run-stats totalTokens: cumulative session total, so it
-		// can sit next to the session token fields.
 		totalTokens: formatPositiveCount(totals.totalTokens),
 		sessionInput: totals.input > 0 ? formatTokens(totals.input) : "",
 		sessionOutput: totals.output > 0 ? formatTokens(totals.output) : "",
@@ -396,7 +374,6 @@ function expandTemplate(template: string, fields: Record<string, string>): strin
 		cursor = fieldEnd;
 		const fieldName = match[1];
 		if (!Object.prototype.hasOwnProperty.call(fields, fieldName)) {
-			// Unknown placeholders stay literal, like ordinary template text.
 			result += match[0];
 			continue;
 		}
@@ -420,7 +397,7 @@ function expandTemplate(template: string, fields: Record<string, string>): strin
 }
 
 /**
- * Expand one template line. The first `{:right}` marker outside an optional
+ * Expand one template line. The first right-align marker outside an optional
  * section splits the line: the text before it stays left-aligned, and
  * everything after it — fields, optional sections, or literal text — is
  * right-aligned as one unit, e.g.
@@ -441,16 +418,15 @@ function expandLine(
 	const markerEnd = marker.index + marker.length;
 	const left = expandTemplate(expandedOptionalGroups.slice(0, marker.index), fields);
 	const right = expandTemplate(expandedOptionalGroups.slice(markerEnd), fields);
-	// An empty right side leaves the line as its left part instead of
-	// padding it with trailing spaces.
 	return right === "" ? { text: left, right: undefined } : { text: left + right, right: { left, right } };
 }
 
 /**
- * Index and length of the first `{:right}` marker (or the deprecated bare
- * `:right` form) outside an optional section, or undefined. `{:right}` is
- * tried first at each position so it is consumed whole. A marker inside
- * `[ ... ]` is literal text, like any other decoration.
+ * Index and length of the first right-align marker outside an optional
+ * section, or undefined. `{:right}` is tried before bare `:right` at each
+ * position so it is consumed whole; inserting any character inside the braces
+ * (e.g. `{ :right}`) therefore keeps the text literal. A marker inside
+ * `[ ... ]` is decoration, like any other bracketed text.
  */
 function findRightAlignMarker(line: string): { index: number; length: number } | undefined {
 	let inSection = false;

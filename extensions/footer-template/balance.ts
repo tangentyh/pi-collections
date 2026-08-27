@@ -119,15 +119,12 @@ function toBalanceValue(amount: unknown, currency: unknown): BalanceValue | unde
 /**
  * Parser for the bigmodel.cn / Z.ai console account-report endpoint
  * (`/api/biz/account/query-customer-account-report`), keyed by host because
- * `open.bigmodel.cn`/`bigmodel.cn` bill in CNY while `api.z.ai` serves USD.
- * Undocumented console API that replaces bigmodel.cn's retired PaaS
- * `account/billing`; it answers HTTP 200 with application-level failures in
- * its JSON envelope (`success: false`, code 1001 = no Authorization header
- * received, 401 = invalid or expired token), so failures throw
- * `BalanceError`: credential problems keep the familiar `http401` code,
- * anything else becomes `api{code}`. On success, `data.balance` holds the
- * account balance; exponent-notation numbers (`0E-9`) parse via Number()
- * like any other JSON number.
+ * `open.bigmodel.cn` bills in CNY while `api.z.ai` serves USD. Undocumented
+ * console API that replaces bigmodel.cn's retired PaaS `account/billing`; it
+ * answers HTTP 200 with application-level failures in its JSON envelope
+ * (`success: false`, code 1001 = no Authorization header received, 401 =
+ * invalid or expired token), mapped onto `BalanceError` codes (`http401`,
+ * else `api{code}`).
  */
 function makeAccountReportParse(currency: string) {
 	return (data: any): BalanceValue | undefined => {

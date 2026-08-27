@@ -69,9 +69,7 @@ async function runTests(stickyLastPrompt: (pi: ExtensionAPI) => void): Promise<v
 		clearFromCursor() {}, clearScreen() {}, setTitle() {}, setProgress() {},
 	};
 
-	// ── transcript with TWO user messages so the scroll-aware pin can be
-	// exercised: spacer(5) · msgA · fillerA(30) · msgB · tail(25, keeps the
-	// scrollbar live and gives room below msgB) ───────────────────────
+	// ── transcript fixture: spacer(5) · msgA · fillerA(30) · msgB · tail(25)
 	const lines = (n: number, label: string): Component => ({
 		render: () => Array.from({ length: n }, (_, i) => `${label} ${i}`),
 		invalidate() {},
@@ -137,14 +135,14 @@ async function runTests(stickyLastPrompt: (pi: ExtensionAPI) => void): Promise<v
 	// the extension uses (inner width excludes the scrollbar column) ────
 	const innerWidth = scrollView.getContentWidth(80);
 	const linesOf = (c: Component) => c.render(innerWidth).length;
-	const startA = linesOf(spacer); // msgA starts right after the spacer
+	const startA = linesOf(spacer);
 	const startB = startA + linesOf(msgA) + linesOf(fillerA);
 	assert.equal(
 		scroll.contentHeight,
 		startB + linesOf(msgB) + linesOf(tail),
 		"offset math must match the laid-out content height",
 	);
-	const trackHeight = scrollView.viewportHeight; // rows of transcript visible
+	const trackHeight = scrollView.viewportHeight;
 	assert.ok(scroll.contentHeight > trackHeight, "fixture must overflow the viewport");
 	// UserMessageComponent renders multiline even for one-liners (Box padding);
 	// guard it so the boundary asserts below prove multiline semantics.
@@ -176,22 +174,13 @@ async function runTests(stickyLastPrompt: (pi: ExtensionAPI) => void): Promise<v
 	};
 
 	// ── selection tracks what has scrolled out of view ──────────────────────────────
-	// At the very top no prompt is above the viewport edge yet: the bar
-	// hides entirely (zero painted rows) and a click falls through.
 	scrollTo(scrollView, 0);
 	assert.equal(findBar()!.renderedRows, 0, "top of transcript: nothing scrolled away, zero rows");
 	assert.equal(barText(), "", "top of transcript pins nothing");
 
-	// A message with its FIRST line exactly at the viewport top is still
-	// visible (right under the bar) — not pinned either.
 	scrollTo(scrollView, startA);
 	assert.doesNotMatch(barText(), /first|second/, "message at the very top row isn't pinned");
 
-	// One row further down its first line is gone — but its body is still
-	// painted right beneath where the bar would sit, so the bar hides rather
-	// than duplicate it. Only once the WHOLE message is above the top does
-	// it become the pin; clicking then jumps back so it sits just below the
-	// one-row bar.
 	scrollTo(scrollView, startA + 1);
 	assert.equal(findBar()!.renderedRows, 0, "straddling message: bar hides instead of duplicating it");
 	scrollTo(scrollView, startA + linesOf(msgA)); // entirely above the top now
@@ -200,17 +189,12 @@ async function runTests(stickyLastPrompt: (pi: ExtensionAPI) => void): Promise<v
 	screen.handleViewportInput("\x1b[<0;11;1M"); // left press at x=10, y=0 (bar row)
 	assert.equal(scrollView.scrollTop, Math.max(0, startA - 1), "bar click lands the shown message below the bar");
 
-	// Multiline across the top edge: anchors record each message's extent
-	// (start and end rows from the same render pass ScrollView paints), so a
-	// message straddling the edge — head gone, tail on screen — keeps the
-	// bar blank instead of duplicating itself; it pins only once entirely out.
-	scrollTo(scrollView, startB + 1); // head above the top, tail visible → blank
+	scrollTo(scrollView, startB + 1);
 	assert.equal(findBar()!.renderedRows, 0, "straddling multiline message blanks the bar");
 	assert.doesNotMatch(barText(), /second question/, "no duplication while its tail is still painted");
 	scrollTo(scrollView, startB + linesOf(msgB)); // entirely above the top now
 	assert.match(barText(), /second question/, "fully-above multiline message pins");
 
-	// Bottom of the transcript: the latest prompt governs.
 	const maxScrollTop = scroll.contentHeight - trackHeight;
 	scrollTo(scrollView, maxScrollTop);
 	assert.match(barText(), /second question/, "bottom of transcript pins the latest message");
@@ -218,12 +202,7 @@ async function runTests(stickyLastPrompt: (pi: ExtensionAPI) => void): Promise<v
 	screen.handleViewportInput("\x1b[<0;11;1M"); // click → jump to msgB - 1
 	assert.equal(scrollView.scrollTop, Math.max(0, startB - 1), "click at bottom jumps to the latest message");
 
-	// Exact flip point: while msgB's first line is ON screen (even at the
-	// very top row), msgB isn't above the edge yet and fully-hidden msgA
-	// keeps the pin. One row down, msgB straddles the edge — the bar blanks
-	// instead of falling back to msgA or duplicating msgB; only once msgB
-	// has left the view entirely does it take the pin over.
-	scrollTo(scrollView, startB); // msgB's first line right at the top
+	scrollTo(scrollView, startB);
 	assert.doesNotMatch(barText(), /second question/, "message at the top row still counts as visible");
 	assert.match(barText(), /first question/, "…so the previous prompt keeps the pin");
 	scrollTo(scrollView, startB + 1);
@@ -244,17 +223,13 @@ async function runTests(stickyLastPrompt: (pi: ExtensionAPI) => void): Promise<v
 	tui.setLayoutRoot(branchedView);
 	tui.renderNow(true);
 
-	// Above all user messages → nothing has scrolled out of view: the bar
-	// hides entirely (zero painted rows) and a click falls through instead
-	// of jumping.
+	// Above all messages → nothing pinned yet.
 	scrollTo(branchedView, 0);
 	assert.equal(findBar()!.renderedRows, 0, "above all messages the bar paints zero rows");
 	assert.equal(barText(), "", "above all messages nothing is pinned");
 	screen.handleViewportInput("\x1b[<0;11;1M"); // press on the covered top row
 	assert.equal(branchedView.scrollTop, 0, "click falls through while nothing is pinned");
 
-	// Bottom of the branched transcript: its own latest message is pinned,
-	// and none of the old branch's prompts leak through.
 	scrollTo(branchedView, contentHeightOf(branchedView) - trackHeight);
 	assert.match(barText(), /branched question/, "bar follows the rebuilt transcript");
 	assert.doesNotMatch(barText(), /first question|second question/);
@@ -284,7 +259,7 @@ async function runTests(stickyLastPrompt: (pi: ExtensionAPI) => void): Promise<v
 	const sgrPress = (col: number, row: number) => `\x1b[<0;${col};${row}M`;
 	const sgrMotion = (col: number, row: number) => `\x1b[<32;${col};${row}M`;
 	const sgrRelease = (col: number, row: number) => `\x1b[<0;${col};${row}m`;
-	screen.handleViewportInput(sgrPress(80, pressY)); // grabOffset = 1
+	screen.handleViewportInput(sgrPress(80, pressY));
 	assert.ok(screen.scrollbarDrag, "press on thumb starts a drag");
 	const motionY = pressY + 5;
 	screen.handleViewportInput(sgrMotion(80, motionY));
@@ -441,10 +416,8 @@ async function runTests(stickyLastPrompt: (pi: ExtensionAPI) => void): Promise<v
 	}
 
 	// ── skill invocations are prompts too ──────────────────────────
-	// pi renders a `/skill` invocation as a collapsible SkillInvocation-
-	// MessageComponent ([skill] name), NOT a UserMessageComponent — and with
-	// no trailing args that block is the whole prompt. It must pin under its
-	// skill name instead of being invisible to the anchor walk.
+	// pi renders `/skill` invocations as collapsible `[skill] name` blocks,
+	// not UserMessageComponents — they must pin like any other prompt.
 	{
 		const skillTui = new TuiAltScreen(fakeTerminal);
 		interface SkillInternals {

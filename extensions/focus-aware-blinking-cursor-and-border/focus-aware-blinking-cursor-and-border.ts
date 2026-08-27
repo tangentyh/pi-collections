@@ -36,8 +36,6 @@ export default function (pi: ExtensionAPI) {
 		if (terminalFocused === focused) return;
 		terminalFocused = focused;
 		if (focused) {
-			// Terminal window regained focus: show the cursor immediately
-			// instead of waiting out the current blink phase.
 			currentEditor?.poke();
 		}
 		activeTui?.requestRender();
@@ -82,13 +80,10 @@ export default function (pi: ExtensionAPI) {
 			currentEditor = new BlinkingCursorEditor(tui, theme, keybindings, ctx, () => terminalFocused);
 
 			// Single interval for the process lifetime; unref so it never
-			// keeps the process alive on its own. Ticks only while the
-			// editor has TUI focus and the terminal window is focused.
+			// keeps the process alive on its own.
 			if (!blinkTimer) {
 				blinkTimer = setInterval(() => {
 					if (!currentEditor?.focused || !terminalFocused) return;
-					// The blink phase is derived from elapsed time inside render;
-					// this tick only drives the re-render.
 					activeTui?.requestRender();
 				}, BLINK_MS);
 				blinkTimer.unref?.();
@@ -117,9 +112,8 @@ export default function (pi: ExtensionAPI) {
 class BlinkingCursorEditor extends CustomEditor {
 	private dimBorder: (s: string) => string;
 	private getTerminalFocused: () => boolean;
-	// Blink phase: visible for BLINK_MS after phaseStart, hidden for
-	// BLINK_MS, repeating. phaseStart is reset to "now" on cursor movement
-	// or refocus so the cursor reappears immediately.
+	// Blink phase, reset to "now" by render() and poke() so the cursor
+	// reappears immediately (see cursorVisibleAt for the half-cycle split).
 	private phaseStart: number;
 	private lastCursor = { line: -1, col: -1 };
 	private lastTextLength = -1;
@@ -150,9 +144,6 @@ class BlinkingCursorEditor extends CustomEditor {
 	override render(width: number): string[] {
 		const focused = this.focused && this.getTerminalFocused();
 
-		// Cursor moved (typing, arrows, word jumps like option+f, scrolling)
-		// or the text changed (backspace at line start, undo, paste): show
-		// the cursor right away with a fresh blink phase, even mid-cycle.
 		const cursor = this.getCursor();
 		const textLength = this.getText().length;
 		if (

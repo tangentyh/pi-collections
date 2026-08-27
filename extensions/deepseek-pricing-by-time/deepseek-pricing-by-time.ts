@@ -9,17 +9,15 @@ import {
 	type MessageEndEvent,
 } from "@earendil-works/pi-coding-agent";
 
-// DeepSeek official USD pricing (https://api-docs.deepseek.com/quick_start/pricing)
-// Peak hours: 01:00-04:00 & 06:00-10:00 UTC (09:00-12:00 & 14:00-18:00 Beijing time),
-// Monday through Friday; all other hours — including weekends — are off-peak.
-// Off-peak rates are exactly half of peak. DeepSeek does not charge for cache writes.
+// DeepSeek official USD pricing (https://api-docs.deepseek.com/quick_start/pricing);
+// exact peak windows at PEAK_HOURS_UTC below). Off-peak rates are exactly half of
+// peak; cache writes are free.
 //
-// pi's built-in cost display is static: it applies whatever rates are in the model
-// metadata (models.json) to every message. This extension corrects that after the
-// fact — at `message_end` it re-prices each DeepSeek assistant message with the
-// peak/off-peak rate that was in effect at the message's own timestamp, so session
-// totals, the footer, the statusline `cost` segment, and exports all reflect the
-// amount DeepSeek actually bills.
+// pi's built-in cost display applies whatever static rates the model metadata
+// carries to every message; this extension instead re-prices each DeepSeek
+// assistant message at `message_end` with the rate tier in effect at the
+// message's own timestamp, so session totals, the footer, the statusline cost,
+// and exports match what DeepSeek actually bills.
 
 interface DeepSeekRates {
 	/** Cache-miss input, USD per 1M tokens. */
@@ -34,7 +32,11 @@ interface DeepSeekRates {
 
 type Tier = "peak" | "offPeak";
 
-/** UTC hours inside a peak window: [01:00, 04:00) and [06:00, 10:00), Monday-Friday. */
+/**
+ * UTC hours inside a peak window: [01:00, 04:00) ∪ [06:00, 10:00) — i.e.
+ * 01:00-04:00 & 06:00-10:00 UTC (09:00-12:00 & 14:00-18:00 Beijing time),
+ * Monday through Friday; every other hour (weekends included) is off-peak.
+ */
 const PEAK_HOURS_UTC = new Set([1, 2, 3, 6, 7, 8, 9]);
 
 const RATES: Record<string, { peak: DeepSeekRates; offPeak: DeepSeekRates }> = {
@@ -91,7 +93,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 /**
  * The `deepseekPricingByTime` setting: a boolean, or `{ showTierStatus: boolean }`.
  * Returns undefined when unset, so the tier status stays enabled by default.
- * Project settings take precedence over global ones.
  */
 function configuredShowTierStatus(ctx: ExtensionContext): boolean | undefined {
 	const files = [
@@ -117,9 +118,7 @@ function configuredShowTierStatus(ctx: ExtensionContext): boolean | undefined {
 }
 
 export default function (pi: ExtensionAPI) {
-	// Re-price every DeepSeek assistant message with the rate tier in effect at
-	// the message's own timestamp. Session totals, footer, statusline and exports
-	// all derive from per-message usage.cost, so correcting here fixes everything.
+	// Re-price every DeepSeek assistant message with the rate tier in effect
 	pi.on("message_end", (event: MessageEndEvent) => {
 		const message = event.message;
 		if (!isDeepSeekAssistant(message) || !message.usage) return;
@@ -129,9 +128,8 @@ export default function (pi: ExtensionAPI) {
 		return { message: withCost(message, rates[tierAt(new Date(message.timestamp ?? Date.now()))]) };
 	});
 
-	// Surface the currently active tier in the footer status area, updating only
-	// when the tier flips. Disabled via the `deepseekPricingByTime` setting, in
-	// which case the status is cleared.
+	// Footer status area, gated by the `deepseekPricingByTime` setting (see
+	// configuredShowTierStatus).
 	let lastStatus: string | undefined;
 	const refreshStatus = (ctx: ExtensionContext) => {
 		const status =

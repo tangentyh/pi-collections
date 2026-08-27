@@ -24,12 +24,10 @@ export interface FooterConfiguration {
 	 */
 	notificationTemplate: string | undefined;
 	/**
-	 * Display currency for cost and balance figures: always a valid
-	 * `CURRENCIES` key or "auto"; "auto" (the default) resolves per provider
-	 * — CNY for the extension's Chinese providers, USD otherwise. Set with
-	 * `/set-currency` (which writes the global settings) or directly via the
-	 * `costCurrency` key in the `footerTemplate` settings object; a
-	 * project-level value shadows the global one like any other setting.
+	 * Display currency for cost and balance figures: a `CURRENCIES` key or
+	 * "auto" (the default; resolves per provider, see resolveAutoCurrency).
+	 * Set via `/set-currency` or the `footerTemplate.costCurrency` settings
+	 * key; project-level values shadow global ones like any other setting.
 	 */
 	costCurrency: string;
 	autoCompactionEnabled: boolean;
@@ -75,12 +73,7 @@ function mergeSettings(
 	return result;
 }
 
-/**
- * The configured footer template. Undefined when no template is configured,
- * so the extension falls back to its built-in-shaped default. An empty or
- * whitespace-only template is returned as "" and leaves pi's built-in footer
- * in place.
- */
+/** Whitespace-only values normalize to ""; semantics: see FooterConfiguration.template. */
 function getFooterTemplate(settings: SettingsObject): string | undefined {
 	const value = settings.footerTemplate;
 	if (typeof value === "string") return value.trim() === "" ? "" : value;
@@ -90,12 +83,7 @@ function getFooterTemplate(settings: SettingsObject): string | undefined {
 	return undefined;
 }
 
-/**
- * The per-message notification template, only available in object form.
- * Undefined when not configured, so the extension uses its default format.
- * An empty or whitespace-only template is returned as "" and disables the
- * notification, matching the footer template's opt-out behavior.
- */
+/** Object-form-only setting; "" disables the notification (see FooterConfiguration). */
 function getNotificationTemplate(settings: SettingsObject): string | undefined {
 	const value = settings.footerTemplate;
 	if (!isRecord(value) || typeof value.notificationTemplate !== "string") return undefined;

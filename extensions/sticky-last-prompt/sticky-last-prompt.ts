@@ -126,13 +126,10 @@ function isPlainContainer(value: unknown): value is { children: readonly unknown
 	return name === "Container" && Array.isArray((value as { children?: unknown }).children);
 }
 
-/** One user message located in document coordinates. */
+/** One user message located in document coordinates (end is exclusive). */
 interface UserAnchor {
-	/** First document row of the message. */
 	start: number;
-	/** First document row BELOW the message (exclusive end). */
 	end: number;
-	/** Collapsed single-line text of the message. */
 	text: string;
 }
 
@@ -156,8 +153,6 @@ function collectUserAnchors(
 			const text = collapseWhitespace(
 				extractUserText((child as unknown as { text?: unknown }).text),
 			);
-			// measureLines was already needed for offset accumulation — reuse it
-			// to record the message's extent so visibility can be decided exactly.
 			const height = measureLines(child, width);
 			if (text) found.push({ start: offset, end: offset + height, text });
 			offset += height;
@@ -283,9 +278,7 @@ export default function stickyLastPrompt(pi: ExtensionAPI): void {
 		return Math.max(1, altScreen?.terminal.columns ?? 80);
 	}
 
-	/** All user messages in document order; cached per width + contentHeight
-	 *  + document children identity — those are what streaming, resize, and
-	 *  transcript rebuilds move. */
+	/** All prompts in document order (cache policy: see anchorCache). */
 	function userAnchors(sv: ScrollViewLike, width: number): UserAnchor[] {
 		const contentHeight = sv.contentHeight;
 		const docChildren = (sv.child as { children?: unknown[] } | undefined)?.children;
@@ -306,14 +299,9 @@ export default function stickyLastPrompt(pi: ExtensionAPI): void {
 		return anchors;
 	}
 
-	/** The user message the bar should pin: the latest one whose first row is
-	 *  above the viewport's top edge — but ONLY once none of its rows are
-	 *  still painted. A message straddling the edge would have the bar
-	 *  duplicate text sitting directly beneath it, so the bar renders nothing
-	 *  until that message has fully left the view; while a newer prompt is
-	 *  straddling, an older fully-hidden prompt does not keep the pin either
-	 *  (a blank bar beats a stale target). Resolved fresh on every paint so
-	 *  scrolling immediately re-pins or clears the bar without any polling. */
+	/** The pin target: latest prompt whose rows have ALL scrolled past the
+	 *  viewport's top edge (hiding rules: see module header). Re-resolved on
+	 *  every paint so scrolling re-pins or clears the bar without polling. */
 	function currentSelection(): UserAnchor | undefined {
 		const sv = primaryScrollView();
 		if (!sv) return undefined;
@@ -440,10 +428,8 @@ export default function stickyLastPrompt(pi: ExtensionAPI): void {
 		// same extension instance (bindExtensions can emit session_start more
 		// than once) have no shutdown in between.
 		anchorCache = null;
-		// Widget registered once: captures the tui reference, keeps the bar
-		// themed, installs the click patch, and creates the overlay. The pin
-		// itself is resolved per paint inside PinBar.render() — scrolling,
-		// streaming, and reloads all re-pin the bar with no extra wiring.
+		// Widget factory runs once per session: wires renderer refs, theme,
+		// patches, and overlay; the pin itself resolves per paint.
 		ctx.ui.setWidget(WIDGET_ID, (tui, theme) => {
 			const screen = tui as AltScreen;
 			altScreen = screen;
