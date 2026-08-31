@@ -2,8 +2,9 @@
 
 Sets the lines scrolled per mouse-wheel notch in pi fullscreen mode
 (default is 1). With this extension, one wheel notch scrolls **5** lines by
-default — tune it with a setting, a CLI flag, or the `DEFAULT_WHEEL_LINES`
-constant in `scroll-speed.ts`.
+default — tune it with a setting, a CLI flag, or the `/scroll-speed`
+command, or disable it entirely to restore pi's built-in scrolling.
+
 
 ## Install
 
@@ -38,17 +39,42 @@ honored only when the project is trusted):
 }
 ```
 
+Or disable the extension without uninstalling it (leaves pi's built-in
+wheel scrolling untouched):
+
+```json
+{
+  "scrollSpeed": { "enabled": false }
+}
+```
+
 Per-invocation override via CLI flag:
 
 ```bash
 pi --wheel-lines 8
+pi --wheel-lines off   # disable for this invocation
 ```
 
-Resolution order (first hit wins): `--wheel-lines` flag → project
-`scrollSpeed.wheelLines` → global `scrollSpeed.wheelLines` →
-`DEFAULT_WHEEL_LINES` in `scroll-speed.ts` (5). Values must be positive
-integers; anything else is ignored. Changes require a pi restart (or
-`/reload`) to take effect.
+Resolution order (first hit wins): `--wheel-lines` flag (number or `off`) →
+project `scrollSpeed` (`"enabled": false`, then `wheelLines`) → global
+`scrollSpeed` (same) → `DEFAULT_WHEEL_LINES` in `scroll-speed.ts` (5).
+`wheelLines` must be a positive integer; anything else is ignored. Changes
+to settings or the flag require a pi restart (or `/reload`) to take effect.
+
+At runtime, the `/scroll-speed` command changes the value immediately
+(no restart):
+
+- `/scroll-speed` — show the current value and where it came from
+- `/scroll-speed 8` — scroll 8 lines per notch for the rest of the session
+- `/scroll-speed off` — disable: restore pi's built-in wheel scrolling
+  (1 line per notch, or whatever the terminal had before)
+- `/scroll-speed reset` — revert to the configured value above (disabled
+  counts: if settings say `"enabled": false`, reset disables again)
+
+Argument completion offers a few common values plus `off` and `reset`. Any
+`/scroll-speed <N>` re-enables after `off`. The runtime override is
+session-only: it survives session switches, but a configured value still
+wins after a restart — to make a value permanent, put it in settings.json.
 
 ## Notes
 
