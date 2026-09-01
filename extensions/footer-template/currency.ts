@@ -37,14 +37,16 @@ export const CURRENCY_LIST = Object.keys(CURRENCIES).join(" ");
 export const AUTO_CURRENCY = "auto";
 
 /**
- * Provider ids billed in CNY — the extension's Chinese providers:
- * DeepSeek, Moonshot CN, SiliconFlow (see balance.ts) and bigmodel.cn's
- * `zai-coding-cn` balance endpoint (see balance.ts). The extension's
- * remaining providers bill in USD: OpenRouter (balance.ts), the Z.ai
- * international host `zai` (also balance.ts), and the OAuth quota providers
- * Codex and Claude; any other provider defaults to USD too.
+ * Provider ids billed in CNY — the extension's Chinese providers, any other
+ * provider defaults to USD.
  */
-const CNY_PROVIDERS = new Set(["deepseek", "moonshotai-cn", "siliconflow", "zai-coding-cn"]);
+const CNY_PROVIDERS = new Set([
+	"deepseek",
+	"moonshotai-cn",
+	"siliconflow",
+	"zai-coding-cn",
+	"zai-api-cn",
+]);
 
 /**
  * The currency `auto` resolves to for a provider (see CNY_PROVIDERS; every

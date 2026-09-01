@@ -504,7 +504,7 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 			void refreshFxIfStale().then(() => requestFooterRender?.());
 			if (activeCurrency === AUTO_CURRENCY) {
 				ctx.ui.notify(
-					`Currency: auto — CNY for Chinese providers (deepseek, moonshotai-cn, siliconflow, zai-coding-cn), USD otherwise.`,
+					`Currency: auto — CNY for Chinese providers (deepseek, moonshotai-cn, siliconflow, zai-coding-cn, zai-api-cn), USD otherwise.`,
 					"info",
 				);
 			} else {

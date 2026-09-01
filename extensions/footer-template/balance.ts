@@ -7,8 +7,11 @@
  * `<Label>: $17.35`. bigmodel.cn retired its PaaS monetary-balance endpoint
  * (`account/billing` answers 404 for every key), so the BigModel and Z.AI
  * balances come from the undocumented console account-report endpoint
- * (`query-customer-account-report`, see makeAccountReportParse below). The
- * DeepSeek handling keeps the richer semantics of
+ * (`query-customer-account-report`, see makeAccountReportParse below).
+ * BigModel is covered in both billing flavors — coding plan and pay-as-you-go (a custom
+ * models.json provider); same account, same endpoint.
+ *
+ * The DeepSeek handling keeps the richer semantics of
  * https://github.com/shaftoe/pi-deepseek-usage: USD is preferred, otherwise
  * the first reported currency is used. Auth goes through pi's model registry
  * (`getApiKeyForProvider`), which is sandbox-aware like pi's own fetch path:
@@ -93,6 +96,13 @@ export const BALANCE_PROVIDERS: Record<string, BalanceProviderConfig> = {
 		},
 	},
 	"zai-coding-cn": {
+		url: "https://open.bigmodel.cn/api/biz/account/query-customer-account-report",
+		label: "BigModel",
+		parse: makeAccountReportParse("CNY"),
+	},
+	// Pay-as-you-go bigmodel.cn API — same account as the coding-plan entry,
+	// hence the shared endpoint and label.
+	"zai-api-cn": {
 		url: "https://open.bigmodel.cn/api/biz/account/query-customer-account-report",
 		label: "BigModel",
 		parse: makeAccountReportParse("CNY"),

@@ -200,7 +200,8 @@ converted to a configurable display currency, like
 
 The default is `auto`: the currency follows the active provider. CNY is used
 for the extension's Chinese providers — `deepseek`, `moonshotai-cn`,
-`siliconflow`, `zai-coding-cn` — and USD for every other provider:
+`siliconflow`, and the bigmodel.cn pair `zai-coding-cn` (coding plan) /
+`zai-api-cn` (pay-as-you-go) — and USD for every other provider:
 `openrouter`, `zai` (Z.ai international), the quota providers `openai-codex`
 and `anthropic`, and anything else. So a
 DeepSeek model shows its cost and balance as `¥...`, an OpenRouter model as
@@ -233,6 +234,7 @@ active provider, like [pi-tidy-footer](https://github.com/eriiic7z/pi-tidy-foote
 | `openrouter` | OpenRouter | `GET https://openrouter.ai/api/v1/credits` | USD |
 | `siliconflow` | SiliconFlow | `GET https://api.siliconflow.cn/v1/user/info` | CNY |
 | `zai-coding-cn` | BigModel | `GET https://open.bigmodel.cn/api/biz/account/query-customer-account-report` | CNY |
+| `zai-api-cn` | BigModel | `GET https://open.bigmodel.cn/api/biz/account/query-customer-account-report` | CNY |
 | `zai` | Z.AI | `GET https://api.z.ai/api/biz/account/query-customer-account-report` | USD |
 
 bigmodel.cn retired its PaaS monetary-balance endpoint (`account/billing`
@@ -241,7 +243,18 @@ undocumented console account-report endpoints above (the same API is also
 reachable at `https://bigmodel.cn/api/biz/account/query-customer-account-report`).
 They accept the regular API key like every other endpoint in this table, but
 — unlike the rest — they answer HTTP 200 with application-level failures in
-their JSON envelope. Both fields are empty when the active model's provider
+their JSON envelope. The two bigmodel.cn entries differ in what the model
+traffic bills: `zai-coding-cn` is pi's built-in provider for the Z.ai CN
+coding plan (subscription quota behind the `.../api/coding/paas/v4`
+endpoint), while `zai-api-cn` is the real pay-as-you-go bigmodel.cn API
+(`.../api/paas/v4`) — typically added as a custom provider in
+`~/.pi/agent/models.json`, since pi ships no such built-in. Both
+authenticate against the same bigmodel.cn account, so they share the balance
+endpoint, the `BigModel` label, and the CNY currency: the reported figure is
+the account's monetary wallet, which pay-as-you-go usage draws down (coding
+plan usage consumes the subscription quota instead).
+
+Both fields are empty when the active model's provider
 is not in the table.
 The balance is fetched with the provider's API key from pi's model registry and
 cached for 30 seconds to avoid excessive API calls; a provider switch
