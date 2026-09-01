@@ -5,6 +5,17 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-09-01
+
+### Added
+
+- `zai-api-cn` balance provider: the pay-as-you-go bigmodel.cn API — usually
+  added as a custom provider in `~/.pi/agent/models.json` — joins the built-in
+  coding-plan provider (`zai-coding-cn`) on the same console account-report
+  endpoint, sharing the `BigModel` label and CNY parsing (same account, same
+  wallet); auto currency resolves to CNY for it, and the `/set-currency` help
+  lists it
+
 ## [0.4.0] - 2026-08-27
 
 ### Added
