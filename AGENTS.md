@@ -48,6 +48,7 @@ When adding an extension, add it to both.
 ```bash
 npm install          # once, installs the whole workspace
 npm run typecheck    # typecheck all extensions from the root
+npm run lint         # biome check (format + lint); `npm run format` writes fixes
 npm run start:<name> # launch pi with one extension loaded, e.g. start:scroll-speed
                      # (same as `pi -e ./extensions/<name>/<name>.ts`)
 ```
