@@ -1,31 +1,49 @@
 {
-  "name": "pi-scroll-speed",
-  "version": "0.2.0",
-  "description": "Lines scrolled per mouse-wheel notch in pi fullscreen mode",
-  "keywords": ["pi-package", "pi-extension", "tui", "scroll", "mouse-wheel", "fullscreen", "settings", "cli-flag", "slash-command", "disable"],
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/tangentyh/pi-collections.git",
-    "directory": "extensions/scroll-speed"
-  },
-  "homepage": "https://github.com/tangentyh/pi-collections/tree/main/extensions/scroll-speed",
-  "type": "module",
-  "pi": {
-    "extensions": ["./scroll-speed.ts"]
-  },
-  "scripts": {
-    "typecheck": "tsc --noEmit -p ../..",
-    "test": "echo \"no tests\"",
-    "prepublishOnly": "npm run typecheck"
-  },
-  "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "*"
-  },
-  "devDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.84.1",
-    "@types/node": "^22.0.0",
-    "typescript": "^5.5.0"
-  },
-  "files": ["scroll-speed.ts", "README.md", "CHANGELOG.md", "LICENSE"]
+	"name": "pi-scroll-speed",
+	"version": "0.2.0",
+	"description": "Lines scrolled per mouse-wheel notch in pi fullscreen mode",
+	"keywords": [
+		"pi-package",
+		"pi-extension",
+		"tui",
+		"scroll",
+		"mouse-wheel",
+		"fullscreen",
+		"settings",
+		"cli-flag",
+		"slash-command",
+		"disable"
+	],
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/tangentyh/pi-collections.git",
+		"directory": "extensions/scroll-speed"
+	},
+	"homepage": "https://github.com/tangentyh/pi-collections/tree/main/extensions/scroll-speed",
+	"type": "module",
+	"pi": {
+		"extensions": [
+			"./scroll-speed.ts"
+		]
+	},
+	"scripts": {
+		"typecheck": "tsc --noEmit -p ../..",
+		"test": "echo \"no tests\"",
+		"prepublishOnly": "npm run typecheck"
+	},
+	"peerDependencies": {
+		"@earendil-works/pi-coding-agent": "*"
+	},
+	"devDependencies": {
+		"@earendil-works/pi-coding-agent": "^0.84.1",
+		"@types/node": "^22.0.0",
+		"typescript": "^5.5.0"
+	},
+	"files": [
+		"scroll-speed.ts",
+		"README.md",
+		"CHANGELOG.md",
+		"LICENSE"
+	]
 }

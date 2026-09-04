@@ -17,20 +17,20 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
+	type ExtensionAPI,
+	initTheme,
+	SkillInvocationMessageComponent,
+	type Theme,
+	UserMessageComponent,
+} from "@earendil-works/pi-coding-agent";
+import {
+	type Component,
 	Container,
 	ScrollView,
-	TuiAltScreen,
-	type Component,
 	type Terminal,
 	type TUI,
+	TuiAltScreen,
 } from "@earendil-works/pi-tui";
-import {
-	SkillInvocationMessageComponent,
-	UserMessageComponent,
-	initTheme,
-	type ExtensionAPI,
-	type Theme,
-} from "@earendil-works/pi-coding-agent";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "..", "..", "..");
@@ -42,15 +42,28 @@ rmSync(tmpDir, { recursive: true, force: true });
 mkdirSync(tmpDir, { recursive: true });
 writeFileSync(join(tmpDir, "package.json"), JSON.stringify({ type: "module" }));
 try {
-	const tsc = join(root, "node_modules", ".bin", process.platform === "win32" ? "tsc.CMD" : "tsc");
-	execFileSync(tsc, [
-		join(here, "..", "sticky-last-prompt.ts"),
-		"--outDir", tmpDir,
-		"--module", "nodenext",
-		"--target", "es2022",
-		"--moduleResolution", "nodenext",
-		"--skipLibCheck",
-	], { cwd: root });
+	const tsc = join(
+		root,
+		"node_modules",
+		".bin",
+		process.platform === "win32" ? "tsc.CMD" : "tsc",
+	);
+	execFileSync(
+		tsc,
+		[
+			join(here, "..", "sticky-last-prompt.ts"),
+			"--outDir",
+			tmpDir,
+			"--module",
+			"nodenext",
+			"--target",
+			"es2022",
+			"--moduleResolution",
+			"nodenext",
+			"--skipLibCheck",
+		],
+		{ cwd: root },
+	);
 	const { default: stickyLastPrompt } = (await import(
 		pathToFileURL(join(tmpDir, "sticky-last-prompt.js")).href
 	)) as { default: (pi: ExtensionAPI) => void };
@@ -59,14 +72,32 @@ try {
 	rmSync(tmpDir, { recursive: true, force: true });
 }
 
-async function runTests(stickyLastPrompt: (pi: ExtensionAPI) => void): Promise<void> {
+async function runTests(
+	stickyLastPrompt: (pi: ExtensionAPI) => void,
+): Promise<void> {
 	// ── fake terminal (80×24) ─────────────────────────────────────
 	const fakeTerminal: Terminal = {
-		start() {}, stop() {}, async drainInput() {}, write() {},
-		get columns() { return 80; }, get rows() { return 24; },
-		get kittyProtocolActive() { return false; },
-		moveBy() {}, hideCursor() {}, showCursor() {}, clearLine() {},
-		clearFromCursor() {}, clearScreen() {}, setTitle() {}, setProgress() {},
+		start() {},
+		stop() {},
+		async drainInput() {},
+		write() {},
+		get columns() {
+			return 80;
+		},
+		get rows() {
+			return 24;
+		},
+		get kittyProtocolActive() {
+			return false;
+		},
+		moveBy() {},
+		hideCursor() {},
+		showCursor() {},
+		clearLine() {},
+		clearFromCursor() {},
+		clearScreen() {},
+		setTitle() {},
+		setProgress() {},
 	};
 
 	// ── transcript fixture: spacer(5) · msgA · fillerA(30) · msgB · tail(25)
@@ -97,7 +128,10 @@ async function runTests(stickyLastPrompt: (pi: ExtensionAPI) => void): Promise<v
 	interface AltScreenInternals {
 		scrollbarDrag?: { scrollView: ScrollView; grabOffset: number } | undefined;
 		handleViewportInput(data: string): unknown;
-		getScrollbarTargetAt(x: number, y: number): { scrollView: ScrollView } | undefined;
+		getScrollbarTargetAt(
+			x: number,
+			y: number,
+		): { scrollView: ScrollView } | undefined;
 	}
 	const screen = tui as unknown as AltScreenInternals;
 	// contentHeight is private upstream too.
@@ -121,7 +155,11 @@ async function runTests(stickyLastPrompt: (pi: ExtensionAPI) => void): Promise<v
 	const ctx = {
 		mode: "tui",
 		hasUI: true,
-		ui: { setWidget: (_id: string, fn?: WidgetFactory) => { widgetFactory = fn; } },
+		ui: {
+			setWidget: (_id: string, fn?: WidgetFactory) => {
+				widgetFactory = fn;
+			},
+		},
 	};
 	await handlers["session_start"]({}, ctx);
 	widgetFactory!(tui, fakeTheme); // pi invokes the factory once at setWidget time
@@ -129,7 +167,11 @@ async function runTests(stickyLastPrompt: (pi: ExtensionAPI) => void): Promise<v
 	tui.renderNow(true);
 
 	assert.equal(tui.hasOverlayEntries, true, "bar overlay should be present");
-	assert.equal(tui.hasOverlay(), false, "patched hasOverlay: bar alone is not an overlay");
+	assert.equal(
+		tui.hasOverlay(),
+		false,
+		"patched hasOverlay: bar alone is not an overlay",
+	);
 
 	// ── expected document geometry, measured through the same render path
 	// the extension uses (inner width excludes the scrollbar column) ────
@@ -143,23 +185,34 @@ async function runTests(stickyLastPrompt: (pi: ExtensionAPI) => void): Promise<v
 		"offset math must match the laid-out content height",
 	);
 	const trackHeight = scrollView.viewportHeight;
-	assert.ok(scroll.contentHeight > trackHeight, "fixture must overflow the viewport");
+	assert.ok(
+		scroll.contentHeight > trackHeight,
+		"fixture must overflow the viewport",
+	);
 	// UserMessageComponent renders multiline even for one-liners (Box padding);
 	// guard it so the boundary asserts below prove multiline semantics.
-	assert.ok(linesOf(msgA) >= 2 && linesOf(msgB) >= 2, "fixture messages render multiline");
+	assert.ok(
+		linesOf(msgA) >= 2 && linesOf(msgB) >= 2,
+		"fixture messages render multiline",
+	);
 
 	// ── read what the bar currently pins ───────────────────────────
 	interface BarLike {
 		renderedRows: number;
 		render(width: number): string[];
 	}
+	// biome-ignore lint/suspicious/noControlCharactersInRegex: \x1b is the ANSI ESC byte; this strips SGR sequences from rendered output in tests
 	const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, "");
 	const findBar = (): BarLike | undefined => {
-		const stack = (tui as unknown as { overlayStack?: readonly { component?: unknown }[] })
-			.overlayStack;
+		const stack = (
+			tui as unknown as { overlayStack?: readonly { component?: unknown }[] }
+		).overlayStack;
 		return stack
 			?.map((entry) => entry.component)
-			.find((c): c is BarLike => !!c && typeof (c as BarLike).renderedRows === "number");
+			.find(
+				(c): c is BarLike =>
+					!!c && typeof (c as BarLike).renderedRows === "number",
+			);
 	};
 	const barText = (): string => {
 		const bar = findBar();
@@ -175,40 +228,96 @@ async function runTests(stickyLastPrompt: (pi: ExtensionAPI) => void): Promise<v
 
 	// ── selection tracks what has scrolled out of view ──────────────────────────────
 	scrollTo(scrollView, 0);
-	assert.equal(findBar()!.renderedRows, 0, "top of transcript: nothing scrolled away, zero rows");
+	assert.equal(
+		findBar()!.renderedRows,
+		0,
+		"top of transcript: nothing scrolled away, zero rows",
+	);
 	assert.equal(barText(), "", "top of transcript pins nothing");
 
 	scrollTo(scrollView, startA);
-	assert.doesNotMatch(barText(), /first|second/, "message at the very top row isn't pinned");
+	assert.doesNotMatch(
+		barText(),
+		/first|second/,
+		"message at the very top row isn't pinned",
+	);
 
 	scrollTo(scrollView, startA + 1);
-	assert.equal(findBar()!.renderedRows, 0, "straddling message: bar hides instead of duplicating it");
+	assert.equal(
+		findBar()!.renderedRows,
+		0,
+		"straddling message: bar hides instead of duplicating it",
+	);
 	scrollTo(scrollView, startA + linesOf(msgA)); // entirely above the top now
-	assert.match(barText(), /first question/, "fully scrolled-past message gets pinned");
+	assert.match(
+		barText(),
+		/first question/,
+		"fully scrolled-past message gets pinned",
+	);
 	assert.doesNotMatch(barText(), /second question/);
 	screen.handleViewportInput("\x1b[<0;11;1M"); // left press at x=10, y=0 (bar row)
-	assert.equal(scrollView.scrollTop, Math.max(0, startA - 1), "bar click lands the shown message below the bar");
+	assert.equal(
+		scrollView.scrollTop,
+		Math.max(0, startA - 1),
+		"bar click lands the shown message below the bar",
+	);
 
 	scrollTo(scrollView, startB + 1);
-	assert.equal(findBar()!.renderedRows, 0, "straddling multiline message blanks the bar");
-	assert.doesNotMatch(barText(), /second question/, "no duplication while its tail is still painted");
+	assert.equal(
+		findBar()!.renderedRows,
+		0,
+		"straddling multiline message blanks the bar",
+	);
+	assert.doesNotMatch(
+		barText(),
+		/second question/,
+		"no duplication while its tail is still painted",
+	);
 	scrollTo(scrollView, startB + linesOf(msgB)); // entirely above the top now
-	assert.match(barText(), /second question/, "fully-above multiline message pins");
+	assert.match(
+		barText(),
+		/second question/,
+		"fully-above multiline message pins",
+	);
 
 	const maxScrollTop = scroll.contentHeight - trackHeight;
 	scrollTo(scrollView, maxScrollTop);
-	assert.match(barText(), /second question/, "bottom of transcript pins the latest message");
+	assert.match(
+		barText(),
+		/second question/,
+		"bottom of transcript pins the latest message",
+	);
 
 	screen.handleViewportInput("\x1b[<0;11;1M"); // click → jump to msgB - 1
-	assert.equal(scrollView.scrollTop, Math.max(0, startB - 1), "click at bottom jumps to the latest message");
+	assert.equal(
+		scrollView.scrollTop,
+		Math.max(0, startB - 1),
+		"click at bottom jumps to the latest message",
+	);
 
 	scrollTo(scrollView, startB);
-	assert.doesNotMatch(barText(), /second question/, "message at the top row still counts as visible");
-	assert.match(barText(), /first question/, "…so the previous prompt keeps the pin");
+	assert.doesNotMatch(
+		barText(),
+		/second question/,
+		"message at the top row still counts as visible",
+	);
+	assert.match(
+		barText(),
+		/first question/,
+		"…so the previous prompt keeps the pin",
+	);
 	scrollTo(scrollView, startB + 1);
-	assert.equal(findBar()!.renderedRows, 0, "one row down, msgB straddles and blanks the bar (no fallback)");
+	assert.equal(
+		findBar()!.renderedRows,
+		0,
+		"one row down, msgB straddles and blanks the bar (no fallback)",
+	);
 	scrollTo(scrollView, startB + linesOf(msgB));
-	assert.match(barText(), /second question/, "once fully out of view, msgB takes the pin");
+	assert.match(
+		barText(),
+		/second question/,
+		"once fully out of view, msgB takes the pin",
+	);
 
 	// ── /tree-style rebuild ─────────────────────────────────────────
 	// pi navigates branches with chatContainer.clear() + re-render, which
@@ -219,19 +328,34 @@ async function runTests(stickyLastPrompt: (pi: ExtensionAPI) => void): Promise<v
 	branchedDoc.addChild(lines(40, "lead-b")); // long preamble above its message
 	branchedDoc.addChild(new UserMessageComponent("branched question"));
 	branchedDoc.addChild(lines(25, "tail-b"));
-	const branchedView = new ScrollView(branchedDoc, { primary: true, scrollbar: "always" });
+	const branchedView = new ScrollView(branchedDoc, {
+		primary: true,
+		scrollbar: "always",
+	});
 	tui.setLayoutRoot(branchedView);
 	tui.renderNow(true);
 
 	// Above all messages → nothing pinned yet.
 	scrollTo(branchedView, 0);
-	assert.equal(findBar()!.renderedRows, 0, "above all messages the bar paints zero rows");
+	assert.equal(
+		findBar()!.renderedRows,
+		0,
+		"above all messages the bar paints zero rows",
+	);
 	assert.equal(barText(), "", "above all messages nothing is pinned");
 	screen.handleViewportInput("\x1b[<0;11;1M"); // press on the covered top row
-	assert.equal(branchedView.scrollTop, 0, "click falls through while nothing is pinned");
+	assert.equal(
+		branchedView.scrollTop,
+		0,
+		"click falls through while nothing is pinned",
+	);
 
 	scrollTo(branchedView, contentHeightOf(branchedView) - trackHeight);
-	assert.match(barText(), /branched question/, "bar follows the rebuilt transcript");
+	assert.match(
+		barText(),
+		/branched question/,
+		"bar follows the rebuilt transcript",
+	);
 	assert.doesNotMatch(barText(), /first question|second question/);
 
 	// Restoring the original layout root restores its state too — including
@@ -239,21 +363,33 @@ async function runTests(stickyLastPrompt: (pi: ExtensionAPI) => void): Promise<v
 	// test above.
 	tui.setLayoutRoot(scrollView);
 	tui.renderNow(true);
-	assert.match(barText(), /second question/, "original transcript re-pins after layout restore");
+	assert.match(
+		barText(),
+		/second question/,
+		"original transcript re-pins after layout restore",
+	);
 
 	// ── scrollbar dragging works while only the bar overlay shows ──
 	// Press exactly at thumbTop + 1 so grabOffset is deterministically 1.
 	const thumbHeight = Math.max(
 		Math.min(2, trackHeight),
-		Math.min(trackHeight, Math.round((trackHeight * trackHeight) / scroll.contentHeight)),
+		Math.min(
+			trackHeight,
+			Math.round((trackHeight * trackHeight) / scroll.contentHeight),
+		),
 	);
 	const maxThumbOffset = trackHeight - thumbHeight;
 	const thumbOffsetAt = (scrollTop: number) =>
-		maxScrollTop === 0 ? 0 : Math.round((scrollTop / maxScrollTop) * maxThumbOffset);
+		maxScrollTop === 0
+			? 0
+			: Math.round((scrollTop / maxScrollTop) * maxThumbOffset);
 	const initialThumbOffset = thumbOffsetAt(scrollView.scrollTop);
 	const pressY = initialThumbOffset + 1;
 	const target = screen.getScrollbarTargetAt(79, pressY);
-	assert.ok(target, "getScrollbarTargetAt must find the thumb while only the bar is shown");
+	assert.ok(
+		target,
+		"getScrollbarTargetAt must find the thumb while only the bar is shown",
+	);
 	assert.equal(target!.scrollView, scrollView);
 
 	const sgrPress = (col: number, row: number) => `\x1b[<0;${col};${row}M`;
@@ -277,7 +413,11 @@ async function runTests(stickyLastPrompt: (pi: ExtensionAPI) => void): Promise<v
 	const handle = tui.showOverlay(dialog); // capturing overlay
 	tui.renderNow(true);
 	assert.equal(tui.hasOverlay(), true, "foreign overlay restores hasOverlay");
-	assert.equal(screen.getScrollbarTargetAt(79, pressY), undefined, "suppressed under foreign overlay");
+	assert.equal(
+		screen.getScrollbarTargetAt(79, pressY),
+		undefined,
+		"suppressed under foreign overlay",
+	);
 	handle.hide();
 	widgetFactory!(tui, fakeTheme);
 	tui.renderNow(true);
@@ -301,9 +441,11 @@ async function runTests(stickyLastPrompt: (pi: ExtensionAPI) => void): Promise<v
 				ctx: {
 					mode: "tui",
 					hasUI: true,
-					ui: { setWidget: (_id: string, fn?: WidgetFactory) => {
-						resumeFactory = fn;
-					} },
+					ui: {
+						setWidget: (_id: string, fn?: WidgetFactory) => {
+							resumeFactory = fn;
+						},
+					},
 				},
 			};
 		};
@@ -317,16 +459,25 @@ async function runTests(stickyLastPrompt: (pi: ExtensionAPI) => void): Promise<v
 		}
 		const resumeScreen = resumeTui as unknown as ResumeInternals;
 		const resumeDoc = new Container();
-		const resumeView = new ScrollView(resumeDoc, { primary: true, scrollbar: "always" });
+		const resumeView = new ScrollView(resumeDoc, {
+			primary: true,
+			scrollbar: "always",
+		});
 		resumeTui.setLayoutRoot(resumeView);
 		resumeTui.start();
 
 		const resumeBarText = (): string => {
-			const stack = (resumeTui as unknown as { overlayStack?: readonly { component?: unknown }[] })
-				.overlayStack;
+			const stack = (
+				resumeTui as unknown as {
+					overlayStack?: readonly { component?: unknown }[];
+				}
+			).overlayStack;
 			const bar = stack
 				?.map((entry) => entry.component)
-				.find((c): c is BarLike => !!c && typeof (c as BarLike).renderedRows === "number");
+				.find(
+					(c): c is BarLike =>
+						!!c && typeof (c as BarLike).renderedRows === "number",
+				);
 			assert.ok(bar, "resume scenario: bar overlay present");
 			return stripAnsi(bar.render(innerWidth).join(""));
 		};
@@ -337,20 +488,32 @@ async function runTests(stickyLastPrompt: (pi: ExtensionAPI) => void): Promise<v
 
 		// Instance A: live session grows a transcript.
 		const a = makeRegistry();
-		stickyLastPrompt({ on: (event: string, handler: (...args: any[]) => unknown) => {
-			a.reg[event] = handler;
-		} } as unknown as ExtensionAPI);
-		await a.reg["session_start"]({ type: "session_start", reason: "startup" }, a.ctx);
+		stickyLastPrompt({
+			on: (event: string, handler: (...args: any[]) => unknown) => {
+				a.reg[event] = handler;
+			},
+		} as unknown as ExtensionAPI);
+		await a.reg["session_start"](
+			{ type: "session_start", reason: "startup" },
+			a.ctx,
+		);
 		assert.ok(resumeFactory, "instance A registered its widget");
 		resumeFactory!(resumeTui, fakeTheme);
 		resumeDoc.addChild(new UserMessageComponent("live question"));
 		resumeDoc.addChild(lines(40, "live-filler"));
 		resumeTui.renderNow(true);
 		resumeScrollTo(contentHeightOf(resumeView)); // clamps to the bottom
-		assert.match(resumeBarText(), /live question/, "instance A tracks the live transcript");
+		assert.match(
+			resumeBarText(),
+			/live question/,
+			"instance A tracks the live transcript",
+		);
 
 		// Teardown: instance A must fully uninstall its renderer patches…
-		await a.reg["session_shutdown"]({ type: "session_shutdown", reason: "resume" }, a.ctx);
+		await a.reg["session_shutdown"](
+			{ type: "session_shutdown", reason: "resume" },
+			a.ctx,
+		);
 		assert.equal(
 			Object.hasOwn(resumeTui, "hasOverlay"),
 			false,
@@ -360,9 +523,11 @@ async function runTests(stickyLastPrompt: (pi: ExtensionAPI) => void): Promise<v
 		// …pi re-runs the same module factory for the new runtime (fresh closure
 		// state: fresh cache, fresh WeakSet, fresh bar)…
 		const b = makeRegistry();
-		stickyLastPrompt({ on: (event: string, handler: (...args: any[]) => unknown) => {
-			b.reg[event] = handler;
-		} } as unknown as ExtensionAPI);
+		stickyLastPrompt({
+			on: (event: string, handler: (...args: any[]) => unknown) => {
+				b.reg[event] = handler;
+			},
+		} as unknown as ExtensionAPI);
 
 		// …rebuilds the transcript FIRST (renderCurrentSessionState order)…
 		resumeDoc.clear();
@@ -374,7 +539,10 @@ async function runTests(stickyLastPrompt: (pi: ExtensionAPI) => void): Promise<v
 		resumeDoc.addChild(lines(25, "resumed-tail"));
 
 		// …and only then emits session_start for the resumed session.
-		await b.reg["session_start"]({ type: "session_start", reason: "resume" }, b.ctx);
+		await b.reg["session_start"](
+			{ type: "session_start", reason: "resume" },
+			b.ctx,
+		);
 		assert.ok(resumeFactory, "instance B registered its widget");
 		resumeFactory!(resumeTui, fakeTheme); // setWidget invokes the factory synchronously
 		resumeTui.renderNow(true);
@@ -384,7 +552,11 @@ async function runTests(stickyLastPrompt: (pi: ExtensionAPI) => void): Promise<v
 			true,
 			"instance B reinstalled the click patch",
 		);
-		assert.equal(resumeTui.hasOverlay(), false, "instance B bar alone is still overlay-free");
+		assert.equal(
+			resumeTui.hasOverlay(),
+			false,
+			"instance B bar alone is still overlay-free",
+		);
 
 		// Scroll-aware over the RESUMED transcript — never a stale/static seed.
 		const startThree =
@@ -393,7 +565,11 @@ async function runTests(stickyLastPrompt: (pi: ExtensionAPI) => void): Promise<v
 			linesOf(new UserMessageComponent("resumed question two")) +
 			30;
 		resumeScrollTo(contentHeightOf(resumeView)); // clamps to bottom
-		assert.match(resumeBarText(), /resumed question three/, "bottom pins the latest message");
+		assert.match(
+			resumeBarText(),
+			/resumed question three/,
+			"bottom pins the latest message",
+		);
 		resumeScreen.handleViewportInput("\x1b[<0;11;1M"); // click bar at bottom
 		assert.equal(
 			resumeView.scrollTop,
@@ -401,18 +577,37 @@ async function runTests(stickyLastPrompt: (pi: ExtensionAPI) => void): Promise<v
 			"click after resume jumps to the pinned message",
 		);
 		resumeScrollTo(0);
-		assert.equal(resumeBarText(), "", "top of the resumed transcript pins nothing yet");
+		assert.equal(
+			resumeBarText(),
+			"",
+			"top of the resumed transcript pins nothing yet",
+		);
 		resumeScreen.handleViewportInput("\x1b[<0;11;1M");
-		assert.equal(resumeView.scrollTop, 0, "click falls through while nothing is pinned");
+		assert.equal(
+			resumeView.scrollTop,
+			0,
+			"click falls through while nothing is pinned",
+		);
 		resumeScrollTo(
 			linesOf(new UserMessageComponent("resumed question one")) +
 				30 +
 				linesOf(new UserMessageComponent("resumed question two")),
 		); // entirely past question two
-		assert.match(resumeBarText(), /resumed question two/, "resumed transcript pins per scroll too");
-		assert.doesNotMatch(resumeBarText(), /three/, "no static last-message seed survives resume");
+		assert.match(
+			resumeBarText(),
+			/resumed question two/,
+			"resumed transcript pins per scroll too",
+		);
+		assert.doesNotMatch(
+			resumeBarText(),
+			/three/,
+			"no static last-message seed survives resume",
+		);
 
-		await b.reg["session_shutdown"]({ type: "session_shutdown", reason: "shutdown" }, b.ctx);
+		await b.reg["session_shutdown"](
+			{ type: "session_shutdown", reason: "shutdown" },
+			b.ctx,
+		);
 	}
 
 	// ── skill invocations are prompts too ──────────────────────────
@@ -426,7 +621,10 @@ async function runTests(stickyLastPrompt: (pi: ExtensionAPI) => void): Promise<v
 		const skillScreen = skillTui as unknown as SkillInternals;
 		const skillHandlers: Record<string, (...args: any[]) => unknown> = {};
 		const skillDoc = new Container();
-		const skillView = new ScrollView(skillDoc, { primary: true, scrollbar: "always" });
+		const skillView = new ScrollView(skillDoc, {
+			primary: true,
+			scrollbar: "always",
+		});
 		skillTui.setLayoutRoot(skillView);
 		skillTui.start();
 		const skillSpacer = lines(5, "pad-s");
@@ -452,22 +650,33 @@ async function runTests(stickyLastPrompt: (pi: ExtensionAPI) => void): Promise<v
 				skillHandlers[event] = handler;
 			},
 		} as unknown as ExtensionAPI);
-		await skillHandlers["session_start"]({ type: "session_start", reason: "startup" }, {
-			mode: "tui",
-			hasUI: true,
-			ui: { setWidget: (_id: string, fn?: WidgetFactory) => {
-				skillFactory = fn;
-			} },
-		});
+		await skillHandlers["session_start"](
+			{ type: "session_start", reason: "startup" },
+			{
+				mode: "tui",
+				hasUI: true,
+				ui: {
+					setWidget: (_id: string, fn?: WidgetFactory) => {
+						skillFactory = fn;
+					},
+				},
+			},
+		);
 		skillFactory!(skillTui, fakeTheme);
 		skillTui.renderNow(true);
 
 		const skillBarText = (): string => {
-			const stack = (skillTui as unknown as { overlayStack?: readonly { component?: unknown }[] })
-				.overlayStack;
+			const stack = (
+				skillTui as unknown as {
+					overlayStack?: readonly { component?: unknown }[];
+				}
+			).overlayStack;
 			const bar = stack
 				?.map((entry) => entry.component)
-				.find((c): c is BarLike => !!c && typeof (c as BarLike).renderedRows === "number");
+				.find(
+					(c): c is BarLike =>
+						!!c && typeof (c as BarLike).renderedRows === "number",
+				);
 			assert.ok(bar, "skill scenario: bar overlay present");
 			return stripAnsi(bar.render(innerWidth).join(""));
 		};
@@ -481,7 +690,11 @@ async function runTests(stickyLastPrompt: (pi: ExtensionAPI) => void): Promise<v
 
 		// Bottom: the later plain prompt governs.
 		skillScrollTo(contentHeightOf(skillView)); // clamps to bottom
-		assert.match(skillBarText(), /plain question after skill/, "bottom pins the latest plain prompt");
+		assert.match(
+			skillBarText(),
+			/plain question after skill/,
+			"bottom pins the latest plain prompt",
+		);
 		skillScreen.handleViewportInput("\x1b[<0;11;1M");
 		assert.equal(
 			skillView.scrollTop,
@@ -492,31 +705,58 @@ async function runTests(stickyLastPrompt: (pi: ExtensionAPI) => void): Promise<v
 		// Entirely past the skill block: it becomes the pin, labeled exactly
 		// like pi's own collapsed rendering.
 		skillScrollTo(startSkill + linesOf(skillBlock));
-		assert.match(skillBarText(), /\[skill\] commit/, "scrolled-past skill invocation pins as [skill] name");
-		assert.doesNotMatch(skillBarText(), /plain question/, "skill pin doesn't leak the later prompt");
+		assert.match(
+			skillBarText(),
+			/\[skill\] commit/,
+			"scrolled-past skill invocation pins as [skill] name",
+		);
+		assert.doesNotMatch(
+			skillBarText(),
+			/plain question/,
+			"skill pin doesn't leak the later prompt",
+		);
 		skillScreen.handleViewportInput("\x1b[<0;11;1M"); // left press on the bar row
-		assert.equal(skillView.scrollTop, Math.max(0, startSkill - 1), "click on a pinned skill jumps back to it");
+		assert.equal(
+			skillView.scrollTop,
+			Math.max(0, startSkill - 1),
+			"click on a pinned skill jumps back to it",
+		);
 
 		// Above everything → nothing pinned (the skill block alone must not
 		// resurrect a stale selection).
 		skillScrollTo(0);
-		assert.equal(skillBarText(), "", "top of transcript with only a skill block pins nothing");
+		assert.equal(
+			skillBarText(),
+			"",
+			"top of transcript with only a skill block pins nothing",
+		);
 
-		await skillHandlers["session_shutdown"]({ type: "session_shutdown", reason: "shutdown" }, {
-			ui: { setWidget: () => {} },
-		});
+		await skillHandlers["session_shutdown"](
+			{ type: "session_shutdown", reason: "shutdown" },
+			{
+				ui: { setWidget: () => {} },
+			},
+		);
 		skillTui.stop();
 	}
 
 	// ── uninstall (session_shutdown) removes instance overrides ────
 	await handlers["session_shutdown"]({}, ctx);
-	assert.equal(Object.hasOwn(tui, "hasOverlay"), false, "own-property hasOverlay removed");
+	assert.equal(
+		Object.hasOwn(tui, "hasOverlay"),
+		false,
+		"own-property hasOverlay removed",
+	);
 	assert.equal(
 		Object.hasOwn(tui, "handleSelectionMouseEvent"),
 		false,
 		"own-property click patch removed",
 	);
-	assert.equal(typeof TuiAltScreen.prototype.hasOverlay.call(tui), "boolean", "prototype method intact");
+	assert.equal(
+		typeof TuiAltScreen.prototype.hasOverlay.call(tui),
+		"boolean",
+		"prototype method intact",
+	);
 
 	console.log(
 		"✓ sticky-last-prompt smoke tests passed (scroll-aware pin, tree rebuild, jump, drag, suppression, cleanup)",

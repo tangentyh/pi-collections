@@ -97,7 +97,9 @@ export const QUOTA_PROVIDERS: Record<string, QuotaProviderConfig> = {
  * undefined when the provider has no quota endpoint. Matching is
  * case-insensitive.
  */
-export function resolveQuotaProvider(provider: string | undefined): string | undefined {
+export function resolveQuotaProvider(
+	provider: string | undefined,
+): string | undefined {
 	if (!provider) return undefined;
 	const id = provider.toLowerCase();
 	return QUOTA_PROVIDERS[id] ? id : undefined;
@@ -153,7 +155,10 @@ export async function fetchQuota(
 		);
 	}
 	if (!response.ok) {
-		throw new QuotaError(`Quota request failed with status ${response.status}`, `http${response.status}`);
+		throw new QuotaError(
+			`Quota request failed with status ${response.status}`,
+			`http${response.status}`,
+		);
 	}
 
 	let data: unknown;
@@ -176,7 +181,11 @@ const RESET_COUNTDOWN_MIN_PERCENT = 75;
  * as `cr:12.34 left` when the account reports one. `<Label>: No quota` when
  * the provider reports neither windows nor credits.
  */
-export function formatQuotaText(label: string, value: QuotaValue | undefined, nowMs = Date.now()): string {
+export function formatQuotaText(
+	label: string,
+	value: QuotaValue | undefined,
+	nowMs = Date.now(),
+): string {
 	if (!value) return `${label}: No quota`;
 	const parts = value.windows.map((window) => {
 		let part = window.usageUnknown
@@ -221,14 +230,20 @@ export function getQuotaTemplateFields(
 	};
 }
 
-function formatWindowPercent(window: QuotaWindow | undefined, kind: "used" | "remaining"): string {
+function formatWindowPercent(
+	window: QuotaWindow | undefined,
+	kind: "used" | "remaining",
+): string {
 	if (!window) return "";
 	if (window.usageUnknown) return "—";
 	const usedPercent = clampPercent(window.usedPercent);
 	return formatPercent(kind === "used" ? usedPercent : 100 - usedPercent);
 }
 
-function formatWindowReset(window: QuotaWindow | undefined, nowMs: number): string {
+function formatWindowReset(
+	window: QuotaWindow | undefined,
+	nowMs: number,
+): string {
 	if (!window?.resetAt) return "";
 	return formatResetCountdown(window.resetAt, nowMs);
 }
@@ -238,8 +253,12 @@ function formatPercent(value: number): string {
 }
 
 /** `~2h30m`, `~45m`, `~3d5h`, `~now` — ported from pi-fancy-footer. */
-export function formatResetCountdown(resetAt: number, nowMs = Date.now()): string {
-	if (!Number.isFinite(resetAt) || !Number.isFinite(nowMs) || resetAt <= 0) return "";
+export function formatResetCountdown(
+	resetAt: number,
+	nowMs = Date.now(),
+): string {
+	if (!Number.isFinite(resetAt) || !Number.isFinite(nowMs) || resetAt <= 0)
+		return "";
 
 	const remainingMs = resetAt * 1000 - nowMs;
 	if (!Number.isFinite(remainingMs) || remainingMs <= 0) return "";
@@ -268,17 +287,25 @@ function parseCodexUsage(data: any): QuotaValue | undefined {
 	const primary = parseCodexWindow(rateLimit?.primary_window, "5h");
 	const secondary = parseCodexWindow(rateLimit?.secondary_window, "7d");
 	const credits = toStringValue(data?.credits?.balance);
-	const windows = [primary, secondary].filter((w): w is QuotaWindow => w !== undefined);
+	const windows = [primary, secondary].filter(
+		(w): w is QuotaWindow => w !== undefined,
+	);
 	if (windows.length === 0 && credits === undefined) return undefined;
 	return { windows, ...(credits !== undefined ? { credits } : {}) };
 }
 
-function parseCodexWindow(value: unknown, fallbackLabel: string): QuotaWindow | undefined {
-	if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+function parseCodexWindow(
+	value: unknown,
+	fallbackLabel: string,
+): QuotaWindow | undefined {
+	if (!value || typeof value !== "object" || Array.isArray(value))
+		return undefined;
 	const window = value as Record<string, unknown>;
 	const usedPercent = toNumber(window.used_percent);
 	const resetAt = normalizeResetAt(toNumber(window.reset_at));
-	const label = windowLabelFromSeconds(toNumber(window.limit_window_seconds)) ?? fallbackLabel;
+	const label =
+		windowLabelFromSeconds(toNumber(window.limit_window_seconds)) ??
+		fallbackLabel;
 	if (usedPercent === undefined && resetAt === undefined) return undefined;
 	return {
 		label,
@@ -291,13 +318,19 @@ function parseCodexWindow(value: unknown, fallbackLabel: string): QuotaWindow | 
 function parseClaudeUsage(data: any): QuotaValue | undefined {
 	const fiveHour = parseClaudeWindow(data?.five_hour, "5h");
 	const sevenDay = parseClaudeWindow(data?.seven_day, "7d");
-	const windows = [fiveHour, sevenDay].filter((w): w is QuotaWindow => w !== undefined);
+	const windows = [fiveHour, sevenDay].filter(
+		(w): w is QuotaWindow => w !== undefined,
+	);
 	if (windows.length === 0) return undefined;
 	return { windows };
 }
 
-function parseClaudeWindow(value: unknown, label: string): QuotaWindow | undefined {
-	if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+function parseClaudeWindow(
+	value: unknown,
+	label: string,
+): QuotaWindow | undefined {
+	if (!value || typeof value !== "object" || Array.isArray(value))
+		return undefined;
 	const window = value as Record<string, unknown>;
 	const usedPercent = toNumber(window.utilization);
 	if (usedPercent === undefined) return undefined;
@@ -311,7 +344,9 @@ function parseClaudeWindow(value: unknown, label: string): QuotaWindow | undefin
 }
 
 /** Map a window length in seconds to a compact label: 18000 -> `5h`, 604800 -> `7d`. */
-function windowLabelFromSeconds(seconds: number | undefined): string | undefined {
+function windowLabelFromSeconds(
+	seconds: number | undefined,
+): string | undefined {
 	if (seconds === undefined || seconds <= 0) return undefined;
 	if (seconds % 86_400 === 0) return `${seconds / 86_400}d`;
 	if (seconds % 3_600 === 0) return `${seconds / 3_600}h`;
@@ -336,7 +371,9 @@ function clampPercent(value: number): number {
 }
 
 function toNumber(value: unknown): number | undefined {
-	return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+	return typeof value === "number" && Number.isFinite(value)
+		? value
+		: undefined;
 }
 
 function toStringValue(value: unknown): string | undefined {

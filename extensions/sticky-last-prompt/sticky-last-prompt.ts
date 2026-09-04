@@ -42,18 +42,18 @@
  */
 
 import {
-	SkillInvocationMessageComponent,
-	UserMessageComponent,
 	type ExtensionAPI,
+	SkillInvocationMessageComponent,
 	type Theme,
+	UserMessageComponent,
 } from "@earendil-works/pi-coding-agent";
 import {
-	truncateToWidth,
-	visibleWidth,
 	type Component,
 	type OverlayHandle,
 	type OverlayOptions,
 	type TUI,
+	truncateToWidth,
+	visibleWidth,
 } from "@earendil-works/pi-tui";
 
 // ═══════════════════════════════════════════════════════════════
@@ -113,7 +113,9 @@ function padToWidth(text: string, width: number): string {
 function measureLines(component: unknown, width: number): number {
 	try {
 		const render = (component as { render?: (w: number) => string[] }).render;
-		return typeof render === "function" ? (render.call(component, width)?.length ?? 0) : 0;
+		return typeof render === "function"
+			? (render.call(component, width)?.length ?? 0)
+			: 0;
 	} catch {
 		return 0;
 	}
@@ -121,9 +123,15 @@ function measureLines(component: unknown, width: number): number {
 
 /** Plain pi-tui Container check. UserMessageComponent extends Container —
  *  always test for the message component BEFORE recursing into containers. */
-function isPlainContainer(value: unknown): value is { children: readonly unknown[] } {
-	const name = (value as { constructor?: { name?: string } } | undefined)?.constructor?.name;
-	return name === "Container" && Array.isArray((value as { children?: unknown }).children);
+function isPlainContainer(
+	value: unknown,
+): value is { children: readonly unknown[] } {
+	const name = (value as { constructor?: { name?: string } } | undefined)
+		?.constructor?.name;
+	return (
+		name === "Container" &&
+		Array.isArray((value as { children?: unknown }).children)
+	);
 }
 
 /** One user message located in document coordinates (end is exclusive). */
@@ -158,10 +166,15 @@ function collectUserAnchors(
 			offset += height;
 		} else if (child instanceof SkillInvocationMessageComponent) {
 			// Label mirrors pi's own collapsed rendering: "[skill] name".
-			const name = (child as unknown as { skillBlock?: { name?: unknown } }).skillBlock?.name;
+			const name = (child as unknown as { skillBlock?: { name?: unknown } })
+				.skillBlock?.name;
 			const height = measureLines(child, width);
 			if (typeof name === "string" && name.trim()) {
-				found.push({ start: offset, end: offset + height, text: `[skill] ${collapseWhitespace(name)}` });
+				found.push({
+					start: offset,
+					end: offset + height,
+					text: `[skill] ${collapseWhitespace(name)}`,
+				});
 			}
 			offset += height;
 		} else if (isPlainContainer(child)) {
@@ -281,7 +294,8 @@ export default function stickyLastPrompt(pi: ExtensionAPI): void {
 	/** All prompts in document order (cache policy: see anchorCache). */
 	function userAnchors(sv: ScrollViewLike, width: number): UserAnchor[] {
 		const contentHeight = sv.contentHeight;
-		const docChildren = (sv.child as { children?: unknown[] } | undefined)?.children;
+		const docChildren = (sv.child as { children?: unknown[] } | undefined)
+			?.children;
 		const children = Array.isArray(docChildren) ? docChildren : undefined;
 		if (
 			anchorCache &&
@@ -306,7 +320,9 @@ export default function stickyLastPrompt(pi: ExtensionAPI): void {
 		const sv = primaryScrollView();
 		if (!sv) return undefined;
 		const width =
-			typeof sv.getContentWidth === "function" ? sv.getContentWidth(terminalWidth()) : terminalWidth();
+			typeof sv.getContentWidth === "function"
+				? sv.getContentWidth(terminalWidth())
+				: terminalWidth();
 		const anchors = userAnchors(sv, Math.max(1, width));
 		const limit = sv.scrollTop;
 		let selected: UserAnchor | undefined;
@@ -325,7 +341,8 @@ export default function stickyLastPrompt(pi: ExtensionAPI): void {
 	 *  matching pi's own scrollbar press test. */
 	function tryConsumeClick(event: MouseEventLike): boolean {
 		if (!overlay || overlay.isHidden()) return false;
-		if (event.release || (event.button & 32) !== 0 || (event.button & 3) !== 0) return false;
+		if (event.release || (event.button & 32) !== 0 || (event.button & 3) !== 0)
+			return false;
 		if (event.y < 0 || event.y >= bar.renderedRows) return false;
 		jumpToPinnedMessage();
 		return true;
@@ -338,7 +355,9 @@ export default function stickyLastPrompt(pi: ExtensionAPI): void {
 		if (!sv) return;
 		// Land the message right below the bar; disableFollow keeps the view
 		// there instead of live-tail yanking it back (same as pi's search jump).
-		sv.scrollTo(Math.max(0, selected.start - bar.renderedRows), { disableFollow: true });
+		sv.scrollTo(Math.max(0, selected.start - bar.renderedRows), {
+			disableFollow: true,
+		});
 		altScreen?.requestRender();
 	}
 

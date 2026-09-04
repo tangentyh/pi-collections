@@ -3,9 +3,9 @@ import { join } from "node:path";
 import {
 	CONFIG_DIR_NAME,
 	CustomEditor,
-	getAgentDir,
 	type ExtensionAPI,
 	type ExtensionContext,
+	getAgentDir,
 } from "@earendil-works/pi-coding-agent";
 import type { AutocompleteItem } from "@earendil-works/pi-tui";
 
@@ -27,9 +27,13 @@ function parseWheelLines(value: unknown): number | undefined {
 }
 
 /** Read the `scrollSpeed` block from a settings.json file; unset on any error. */
-function readScrollSpeedSettings(file: string): ScrollSpeedSettings | undefined {
+function readScrollSpeedSettings(
+	file: string,
+): ScrollSpeedSettings | undefined {
 	try {
-		const settings = JSON.parse(readFileSync(file, "utf8")) as { scrollSpeed?: unknown };
+		const settings = JSON.parse(readFileSync(file, "utf8")) as {
+			scrollSpeed?: unknown;
+		};
 		if (
 			settings &&
 			typeof settings === "object" &&
@@ -56,27 +60,36 @@ type ConfiguredWheelLines =
 type WheelLinesOverride = number | "off" | undefined;
 
 /** Precedence: CLI flag > trusted project settings > global settings > default. */
-function resolveWheelLines(pi: ExtensionAPI, ctx: ExtensionContext): ConfiguredWheelLines {
+function resolveWheelLines(
+	pi: ExtensionAPI,
+	ctx: ExtensionContext,
+): ConfiguredWheelLines {
 	const flag = pi.getFlag("wheel-lines");
 	if (typeof flag === "string") {
 		if (flag.trim().toLowerCase() === "off") {
 			return { state: "off", source: "--wheel-lines flag" };
 		}
 		const fromFlag = parseWheelLines(Number(flag));
-		if (fromFlag !== undefined) return { state: "value", value: fromFlag, source: "--wheel-lines flag" };
+		if (fromFlag !== undefined)
+			return { state: "value", value: fromFlag, source: "--wheel-lines flag" };
 	}
 	if (ctx.isProjectTrusted()) {
-		const project = readScrollSpeedSettings(join(ctx.cwd, CONFIG_DIR_NAME, "settings.json"));
-		if (project?.enabled === false) return { state: "off", source: "project settings" };
+		const project = readScrollSpeedSettings(
+			join(ctx.cwd, CONFIG_DIR_NAME, "settings.json"),
+		);
+		if (project?.enabled === false)
+			return { state: "off", source: "project settings" };
 		const fromProject = parseWheelLines(project?.wheelLines);
 		if (fromProject !== undefined) {
 			return { state: "value", value: fromProject, source: "project settings" };
 		}
 	}
 	const global = readScrollSpeedSettings(join(getAgentDir(), "settings.json"));
-	if (global?.enabled === false) return { state: "off", source: "global settings" };
+	if (global?.enabled === false)
+		return { state: "off", source: "global settings" };
 	const fromGlobal = parseWheelLines(global?.wheelLines);
-	if (fromGlobal !== undefined) return { state: "value", value: fromGlobal, source: "global settings" };
+	if (fromGlobal !== undefined)
+		return { state: "value", value: fromGlobal, source: "global settings" };
 	return { state: "value", value: DEFAULT_WHEEL_LINES, source: "default" };
 }
 
@@ -94,24 +107,38 @@ const SUGGESTED_WHEEL_LINES = [1, 2, 3, 5, 10];
 
 export default function (pi: ExtensionAPI): void {
 	pi.registerFlag("wheel-lines", {
-		description: "Lines scrolled per mouse-wheel notch in pi fullscreen mode (number, or \"off\" to disable)",
+		description:
+			'Lines scrolled per mouse-wheel notch in pi fullscreen mode (number, or "off" to disable)',
 		type: "string",
 	});
 
 	// Value resolved from flag/settings/default on session start, plus an
 	// optional runtime override set via /scroll-speed (session-only, wins
 	// until /scroll-speed reset or an extension reload).
-	let configured: ConfiguredWheelLines = { state: "value", value: DEFAULT_WHEEL_LINES, source: "default" };
+	let configured: ConfiguredWheelLines = {
+		state: "value",
+		value: DEFAULT_WHEEL_LINES,
+		source: "default",
+	};
 	let override: WheelLinesOverride;
 	let activeTui: AltScreenLike | undefined;
 	// pi's own value before we first touched the current TUI, so that
 	// disabling can restore the built-in behavior exactly.
 	let originalWheelLines: number | undefined;
 
-	const currentIsOff = () => override === "off" || (override === undefined && configured.state === "off");
+	const currentIsOff = () =>
+		override === "off" ||
+		(override === undefined && configured.state === "off");
 	const currentWheelLines = () =>
-		override !== undefined && override !== "off" ? override : configured.state === "value" ? configured.value : DEFAULT_WHEEL_LINES;
-	const currentSource = () => (override !== undefined ? "runtime override (/scroll-speed)" : configured.source);
+		override !== undefined && override !== "off"
+			? override
+			: configured.state === "value"
+				? configured.value
+				: DEFAULT_WHEEL_LINES;
+	const currentSource = () =>
+		override !== undefined
+			? "runtime override (/scroll-speed)"
+			: configured.source;
 	const describeCurrent = () =>
 		currentIsOff()
 			? `disabled (pi built-in: ${originalWheelLines ?? 1} line(s) per notch; ${currentSource()})`
@@ -123,7 +150,9 @@ export default function (pi: ExtensionAPI): void {
 		// Only the fullscreen alt-screen has this field; regular mode scrolls
 		// via the terminal's own scrollback and is intentionally untouched.
 		if (!tui || typeof tui.wheelScrollLines !== "number") return;
-		tui.wheelScrollLines = currentIsOff() ? (originalWheelLines ?? 1) : currentWheelLines();
+		tui.wheelScrollLines = currentIsOff()
+			? (originalWheelLines ?? 1)
+			: currentWheelLines();
 	};
 
 	pi.registerCommand("scroll-speed", {
@@ -218,7 +247,9 @@ export default function (pi: ExtensionAPI): void {
 			// Remember pi's own value per TUI instance so "off" can restore it.
 			if (activeTui !== altScreen) {
 				originalWheelLines =
-					typeof altScreen.wheelScrollLines === "number" ? altScreen.wheelScrollLines : undefined;
+					typeof altScreen.wheelScrollLines === "number"
+						? altScreen.wheelScrollLines
+						: undefined;
 			}
 			activeTui = altScreen;
 			applyWheelLines();

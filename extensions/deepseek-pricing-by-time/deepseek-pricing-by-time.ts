@@ -3,9 +3,9 @@ import { join } from "node:path";
 import type { AssistantMessage, Usage } from "@earendil-works/pi-ai";
 import {
 	CONFIG_DIR_NAME,
-	getAgentDir,
 	type ExtensionAPI,
 	type ExtensionContext,
+	getAgentDir,
 	type MessageEndEvent,
 } from "@earendil-works/pi-coding-agent";
 
@@ -76,8 +76,14 @@ function reprice(usage: Usage, rates: DeepSeekRates): Usage["cost"] {
 }
 
 /** Immutably re-price a message's usage at the given rates. */
-function withCost(message: AssistantMessage, rates: DeepSeekRates): AssistantMessage {
-	return { ...message, usage: { ...message.usage, cost: reprice(message.usage, rates) } };
+function withCost(
+	message: AssistantMessage,
+	rates: DeepSeekRates,
+): AssistantMessage {
+	return {
+		...message,
+		usage: { ...message.usage, cost: reprice(message.usage, rates) },
+	};
 }
 
 function isDeepSeekAssistant(message: unknown): message is AssistantMessage {
@@ -96,7 +102,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  */
 function configuredShowTierStatus(ctx: ExtensionContext): boolean | undefined {
 	const files = [
-		ctx.isProjectTrusted() ? join(ctx.cwd, CONFIG_DIR_NAME, "settings.json") : undefined,
+		ctx.isProjectTrusted()
+			? join(ctx.cwd, CONFIG_DIR_NAME, "settings.json")
+			: undefined,
 		join(getAgentDir(), "settings.json"),
 	];
 	for (const file of files) {
@@ -125,7 +133,12 @@ export default function (pi: ExtensionAPI) {
 		const rates = RATES[message.responseModel ?? message.model];
 		if (!rates) return;
 
-		return { message: withCost(message, rates[tierAt(new Date(message.timestamp ?? Date.now()))]) };
+		return {
+			message: withCost(
+				message,
+				rates[tierAt(new Date(message.timestamp ?? Date.now()))],
+			),
+		};
 	});
 
 	// Footer status area, gated by the `deepseekPricingByTime` setting (see
@@ -133,7 +146,7 @@ export default function (pi: ExtensionAPI) {
 	let lastStatus: string | undefined;
 	const refreshStatus = (ctx: ExtensionContext) => {
 		const status =
-			configuredShowTierStatus(ctx) ?? true
+			(configuredShowTierStatus(ctx) ?? true)
 				? tierAt(new Date()) === "peak"
 					? "peak ⚠️"
 					: "off-peak"
@@ -148,7 +161,8 @@ export default function (pi: ExtensionAPI) {
 	pi.on("model_select", (_event, ctx) => refreshStatus(ctx));
 
 	pi.registerCommand("deepseek-tier", {
-		description: "Show the currently active DeepSeek pricing tier (peak/off-peak) and its rates",
+		description:
+			"Show the currently active DeepSeek pricing tier (peak/off-peak) and its rates",
 		handler: async (_args, ctx) => {
 			const now = new Date();
 			const tier = tierAt(now);

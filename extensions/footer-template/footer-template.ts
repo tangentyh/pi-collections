@@ -1,5 +1,9 @@
 import type { AssistantMessage, Usage } from "@earendil-works/pi-ai";
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type {
+	ExtensionAPI,
+	ExtensionContext,
+} from "@earendil-works/pi-coding-agent";
+import type { BalanceValue } from "./balance.js";
 import {
 	BALANCE_CACHE_MS,
 	BALANCE_PROVIDERS,
@@ -8,17 +12,14 @@ import {
 	formatBalanceText,
 	resolveBalanceProvider,
 } from "./balance.js";
-import type { BalanceValue } from "./balance.js";
 import {
-	QUOTA_CACHE_MS,
-	QUOTA_PROVIDERS,
-	QuotaError,
-	fetchQuota,
-	formatQuotaText,
-	resolveQuotaProvider,
-} from "./quota.js";
-import type { QuotaValue } from "./quota.js";
-import { AUTO_CURRENCY, CURRENCIES, CURRENCY_LIST, getFxRates, refreshFxIfStale, resolveDisplayCurrency } from "./currency.js";
+	AUTO_CURRENCY,
+	CURRENCIES,
+	CURRENCY_LIST,
+	getFxRates,
+	refreshFxIfStale,
+	resolveDisplayCurrency,
+} from "./currency.js";
 import {
 	DEFAULT_FOOTER_TEMPLATE,
 	formatElapsedTime,
@@ -28,6 +29,15 @@ import {
 	renderTemplate,
 } from "./format.js";
 import { resolveFooterConfiguration, writeGlobalCostCurrency } from "./io.js";
+import type { QuotaValue } from "./quota.js";
+import {
+	fetchQuota,
+	formatQuotaText,
+	QUOTA_CACHE_MS,
+	QUOTA_PROVIDERS,
+	QuotaError,
+	resolveQuotaProvider,
+} from "./quota.js";
 import type { RunStats, SessionUsage, UsageTotals } from "./types.js";
 
 function isAssistantMessage(message: unknown): message is AssistantMessage {
@@ -66,9 +76,13 @@ function computeSessionUsage(ctx: ExtensionContext): SessionUsage {
 			if (entry.message.role === "assistant") {
 				addUsage(totals, entry.message.usage);
 				const promptTokens =
-					entry.message.usage.input + entry.message.usage.cacheRead + entry.message.usage.cacheWrite;
+					entry.message.usage.input +
+					entry.message.usage.cacheRead +
+					entry.message.usage.cacheWrite;
 				latestCacheHitRate =
-					promptTokens > 0 ? (entry.message.usage.cacheRead / promptTokens) * 100 : undefined;
+					promptTokens > 0
+						? (entry.message.usage.cacheRead / promptTokens) * 100
+						: undefined;
 			} else if (entry.message.role === "toolResult") {
 				addUsage(totals, entry.message.usage);
 			}
@@ -197,7 +211,8 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 			requestFooterRender?.();
 		}
 		// Skip when this provider's data is still fresh or in flight.
-		if (quotaProvider === provider && (now < quotaFreshUntil || quotaFetching)) return;
+		if (quotaProvider === provider && (now < quotaFreshUntil || quotaFetching))
+			return;
 		const label = QUOTA_PROVIDERS[provider].label;
 		// Sequence token: superseded requests must not clear their
 		// replacement's in-flight flag.
@@ -245,7 +260,11 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 		activeBalanceProvider = provider;
 		const now = Date.now();
 		// A provider switch invalidates the cache: refetch immediately.
-		if (balanceProvider === provider && (now < balanceFreshUntil || balanceFetching)) return;
+		if (
+			balanceProvider === provider &&
+			(now < balanceFreshUntil || balanceFetching)
+		)
+			return;
 		const label = BALANCE_PROVIDERS[provider].label;
 		// Sequence token: superseded requests must not clear their
 		// replacement's in-flight flag.
@@ -255,7 +274,8 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 				const value = await fetchBalance(provider, modelRegistry);
 				// Discard superseded results (provider may have changed mid-fetch).
 				if (activeBalanceProvider !== provider) return;
-				if (value && !firstBalances.has(provider)) firstBalances.set(provider, value);
+				if (value && !firstBalances.has(provider))
+					firstBalances.set(provider, value);
 				balanceText = formatBalanceText(label, value);
 				balanceValue = value ?? undefined;
 				balanceProvider = provider;
@@ -288,7 +308,8 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 
 	pi.on("agent_start", () => {
 		const now = performance.now();
-		idleTimeMs = lastAgentEndMs === null ? 0 : Math.max(0, now - lastAgentEndMs);
+		idleTimeMs =
+			lastAgentEndMs === null ? 0 : Math.max(0, now - lastAgentEndMs);
 		agentStartMs = now;
 	});
 
@@ -301,7 +322,12 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 		agentStartMs = null;
 		if (elapsedMs <= 0) return;
 
-		const nextRunStats = calculateRunStats(event.messages, elapsedMs, idleTimeMs, new Date());
+		const nextRunStats = calculateRunStats(
+			event.messages,
+			elapsedMs,
+			idleTimeMs,
+			new Date(),
+		);
 		if (!nextRunStats) return;
 		runStats = nextRunStats;
 		requestFooterRender?.();
@@ -426,7 +452,8 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 				},
 				dispose() {
 					unsubscribeBranchChanges();
-					if (requestFooterRender === requestRender) requestFooterRender = undefined;
+					if (requestFooterRender === requestRender)
+						requestFooterRender = undefined;
 				},
 			};
 		});
@@ -492,7 +519,10 @@ export default function footerTemplate(pi: ExtensionAPI): void {
 				return;
 			}
 			if (ccy !== "AUTO" && !CURRENCIES[ccy]) {
-				ctx.ui.notify(`Invalid currency: "${ccy}". Use AUTO or one of: ${CURRENCY_LIST}`, "error");
+				ctx.ui.notify(
+					`Invalid currency: "${ccy}". Use AUTO or one of: ${CURRENCY_LIST}`,
+					"error",
+				);
 				return;
 			}
 			writeGlobalCostCurrency(ccy === "AUTO" ? AUTO_CURRENCY : ccy);

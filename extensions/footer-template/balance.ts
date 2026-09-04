@@ -58,7 +58,8 @@ export const BALANCE_PROVIDERS: Record<string, BalanceProviderConfig> = {
 		parse: (data) => {
 			const balances = data?.balance_infos;
 			if (!Array.isArray(balances) || balances.length === 0) return undefined;
-			const preferred = balances.find((b) => b?.currency === "USD") ?? balances[0];
+			const preferred =
+				balances.find((b) => b?.currency === "USD") ?? balances[0];
 			return toBalanceValue(preferred?.total_balance, preferred?.currency);
 		},
 	},
@@ -120,10 +121,15 @@ function toAmount(value: unknown): number {
 	return Number(value);
 }
 
-function toBalanceValue(amount: unknown, currency: unknown): BalanceValue | undefined {
+function toBalanceValue(
+	amount: unknown,
+	currency: unknown,
+): BalanceValue | undefined {
 	const value = toAmount(amount);
 	const ccy = typeof currency === "string" && currency ? currency : undefined;
-	return Number.isFinite(value) && ccy ? { amount: value, currency: ccy } : undefined;
+	return Number.isFinite(value) && ccy
+		? { amount: value, currency: ccy }
+		: undefined;
 }
 
 /**
@@ -139,12 +145,19 @@ function toBalanceValue(amount: unknown, currency: unknown): BalanceValue | unde
 function makeAccountReportParse(currency: string) {
 	return (data: any): BalanceValue | undefined => {
 		if (data && typeof data === "object" && !Array.isArray(data)) {
-			const code = typeof data.code === "number" && data.code >= 400 ? data.code : undefined;
+			const code =
+				typeof data.code === "number" && data.code >= 400
+					? data.code
+					: undefined;
 			if (data.success === false || code !== undefined) {
 				const msg = typeof data.msg === "string" ? data.msg : "";
 				throw new BalanceError(
 					`Balance request failed: ${msg || "application-level failure"}`,
-					code !== undefined ? (code === 401 || code === 1001 ? "http401" : `api${code}`) : "api",
+					code !== undefined
+						? code === 401 || code === 1001
+							? "http401"
+							: `api${code}`
+						: "api",
 				);
 			}
 		}
@@ -158,7 +171,9 @@ function makeAccountReportParse(currency: string) {
  * undefined when the provider has no balance endpoint. Matching is
  * case-insensitive; DeepSeek keeps its prefix match (like pi-deepseek-usage).
  */
-export function resolveBalanceProvider(provider: string | undefined): string | undefined {
+export function resolveBalanceProvider(
+	provider: string | undefined,
+): string | undefined {
 	if (!provider) return undefined;
 	const id = provider.toLowerCase();
 	if (id.startsWith("deepseek")) return "deepseek";
@@ -188,7 +203,10 @@ export async function fetchBalance(
 ): Promise<BalanceValue | undefined> {
 	const config = BALANCE_PROVIDERS[provider];
 	if (!config) {
-		throw new BalanceError(`Unsupported balance provider: ${provider}`, "provider");
+		throw new BalanceError(
+			`Unsupported balance provider: ${provider}`,
+			"provider",
+		);
 	}
 
 	const apiKey = await modelRegistry.getApiKeyForProvider(provider);
@@ -211,14 +229,20 @@ export async function fetchBalance(
 		);
 	}
 	if (!response.ok) {
-		throw new BalanceError(`Balance request failed with status ${response.status}`, `http${response.status}`);
+		throw new BalanceError(
+			`Balance request failed with status ${response.status}`,
+			`http${response.status}`,
+		);
 	}
 
 	let data: unknown;
 	try {
 		data = await response.json();
 	} catch {
-		throw new BalanceError("Balance response was empty or malformed", "badjson");
+		throw new BalanceError(
+			"Balance response was empty or malformed",
+			"badjson",
+		);
 	}
 
 	return config.parse(data);
@@ -242,7 +266,10 @@ export function formatMoney(amount: number, currency: string): string {
  * Render the balance the way pi-deepseek-usage's footer status does, e.g.
  * `DeepSeek: $17.35`; `<Label>: No balance` when none is reported.
  */
-export function formatBalanceText(label: string, value: BalanceValue | undefined): string {
+export function formatBalanceText(
+	label: string,
+	value: BalanceValue | undefined,
+): string {
 	if (!value) return `${label}: No balance`;
 	return `${label}: ${formatMoney(value.amount, value.currency)}`;
 }

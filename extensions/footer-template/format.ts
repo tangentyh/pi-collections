@@ -5,24 +5,32 @@ import type {
 	Theme,
 } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import { BALANCE_PROVIDERS, currencySymbol } from "./balance.js";
 import type { BalanceValue } from "./balance.js";
-import { AUTO_CURRENCY, CURRENCIES, ccyRate, formatCost, resolveAutoCurrency } from "./currency.js";
-import { getQuotaTemplateFields, QUOTA_PROVIDERS } from "./quota.js";
+import { BALANCE_PROVIDERS, currencySymbol } from "./balance.js";
+import {
+	AUTO_CURRENCY,
+	CURRENCIES,
+	ccyRate,
+	formatCost,
+	resolveAutoCurrency,
+} from "./currency.js";
 import type { QuotaValue } from "./quota.js";
-import type { RunStats, SessionUsage, UsageTotals } from "./types.js";
+import { getQuotaTemplateFields, QUOTA_PROVIDERS } from "./quota.js";
+import type { RunStats, SessionUsage } from "./types.js";
 
 const FIELD_PATTERN = /\{([A-Za-z][A-Za-z0-9_]*)\}/g;
 // Square-bracketed sections are omitted when all contained fields are empty
 // (groups cannot nest).
-const OPTIONAL_GROUP_PATTERN = /\[([^\[\]\r\n]*)\]/g;
+const OPTIONAL_GROUP_PATTERN = /\[([^[\]\r\n]*)\]/g;
 // Line-split markers: content after the first occurrence outside an optional
 // section renders right-aligned as one unit. Bare ":right" is deprecated.
 const RIGHT_ALIGN_MARKER = "{:right}";
 const LEGACY_RIGHT_ALIGN_MARKER = ":right";
 
 export function formatElapsedTime(elapsedSeconds: number): string {
-	const secondsValue = Number.isFinite(elapsedSeconds) ? Math.max(0, elapsedSeconds) : 0;
+	const secondsValue = Number.isFinite(elapsedSeconds)
+		? Math.max(0, elapsedSeconds)
+		: 0;
 	if (secondsValue < 60) return `${secondsValue.toFixed(1)}s`;
 
 	const totalSeconds = Math.floor(secondsValue);
@@ -50,10 +58,18 @@ export function formatCount(count: number): string {
 
 /** Format a positive count for an optional template field; zero is omitted. */
 function formatPositiveCount(count: number | null | undefined): string {
-	return count === null || count === undefined || !Number.isFinite(count) || count <= 0 ? "" : formatCount(count);
+	return count === null ||
+		count === undefined ||
+		!Number.isFinite(count) ||
+		count <= 0
+		? ""
+		: formatCount(count);
 }
 
-export function formatCwdForFooter(cwd: string, home: string | undefined): string {
+export function formatCwdForFooter(
+	cwd: string,
+	home: string | undefined,
+): string {
 	if (!home) return cwd;
 
 	const resolvedCwd = resolve(cwd);
@@ -61,17 +77,24 @@ export function formatCwdForFooter(cwd: string, home: string | undefined): strin
 	const relativeToHome = relative(resolvedHome, resolvedCwd);
 	const isInsideHome =
 		relativeToHome === "" ||
-		(relativeToHome !== ".." && !relativeToHome.startsWith(`..${sep}`) && !isAbsolute(relativeToHome));
+		(relativeToHome !== ".." &&
+			!relativeToHome.startsWith(`..${sep}`) &&
+			!isAbsolute(relativeToHome));
 	if (!isInsideHome) return cwd;
 	return relativeToHome === "" ? "~" : `~${sep}${relativeToHome}`;
 }
 
 function sanitizeStatusText(text: string): string {
 	// Keep ANSI styling from ctx.ui.setStatus(), matching pi's built-in footer.
-	return text.replace(/[\r\n\t]/g, " ").replace(/ +/g, " ").trim();
+	return text
+		.replace(/[\r\n\t]/g, " ")
+		.replace(/ +/g, " ")
+		.trim();
 }
 
-export function formatExtensionStatuses(footerData: ReadonlyFooterDataProvider): string {
+export function formatExtensionStatuses(
+	footerData: ReadonlyFooterDataProvider,
+): string {
 	return Array.from(footerData.getExtensionStatuses().entries())
 		.sort(([a], [b]) => a.localeCompare(b))
 		.map(([, text]) => sanitizeStatusText(text))
@@ -159,7 +182,9 @@ function formatBalanceDeltaField(
 	if (rounded === 0) return "";
 	const abs = Math.abs(rounded).toFixed(2);
 	const symbol =
-		displayCurrency === costCurrency ? info.symbol : currencySymbol(displayCurrency);
+		displayCurrency === costCurrency
+			? info.symbol
+			: currencySymbol(displayCurrency);
 	return rounded < 0 ? `-${symbol}${abs}` : `+${symbol}${abs}`;
 }
 
@@ -176,7 +201,8 @@ function isUsingSubscription(ctx: ExtensionContext): boolean {
 	try {
 		return (
 			ctx.modelRegistry.isUsingOAuth(model) &&
-			ctx.modelRegistry.getProvider(model.provider)?.auth?.oauth?.isSubscription === true
+			ctx.modelRegistry.getProvider(model.provider)?.auth?.oauth
+				?.isSubscription === true
 		);
 	} catch {
 		return false;
@@ -232,7 +258,8 @@ export function getFieldValues(
 			? resolveAutoCurrency(model?.provider)
 			: options.costCurrency;
 	const contextUsage = ctx.getContextUsage();
-	const contextWindow = contextUsage?.contextWindow ?? model?.contextWindow ?? 0;
+	const contextWindow =
+		contextUsage?.contextWindow ?? model?.contextWindow ?? 0;
 	const rawPercent = contextUsage?.percent;
 	const percent = rawPercent === null ? "?" : (rawPercent ?? 0).toFixed(1);
 	// The absolute token count behind the usage percentage (the exact
@@ -246,7 +273,8 @@ export function getFieldValues(
 	// Quota status wins over the monetary balance (precedence and rendering:
 	// see FooterFieldOptions.quotaText).
 	const balanceProviderLabel = options.balanceProvider
-		? (BALANCE_PROVIDERS[options.balanceProvider]?.label ?? options.balanceProvider)
+		? (BALANCE_PROVIDERS[options.balanceProvider]?.label ??
+			options.balanceProvider)
 		: "";
 	const firstBalance = options.balanceProvider
 		? options.firstBalances.get(options.balanceProvider)
@@ -266,7 +294,9 @@ export function getFieldValues(
 				)
 			: options.balanceText;
 	const balanceLabel = compositeBalance
-		? (options.quotaText ? quotaProviderLabel : balanceProviderLabel)
+		? options.quotaText
+			? quotaProviderLabel
+			: balanceProviderLabel
 		: "";
 	// Error/No-quota text carries no structured data to break down.
 	const quotaBreakdownShown = !!options.quotaText && !!options.quotaValue;
@@ -280,13 +310,17 @@ export function getFieldValues(
 
 	return {
 		...getRunStatsFields(runStats, costCurrency, options.fxRates),
-		cwd: formatCwdForFooter(ctx.sessionManager.getCwd(), process.env.HOME || process.env.USERPROFILE),
+		cwd: formatCwdForFooter(
+			ctx.sessionManager.getCwd(),
+			process.env.HOME || process.env.USERPROFILE,
+		),
 		gitBranch: branch || "",
 		sessionName: sessionName || "",
 		// Like the built-in footer's CH marker: only while the session has any
 		// cache usage, and without the % sign (the template adds it).
 		latestCacheHitRate:
-			(totals.cacheRead > 0 || totals.cacheWrite > 0) && latestCacheHitRate !== undefined
+			(totals.cacheRead > 0 || totals.cacheWrite > 0) &&
+			latestCacheHitRate !== undefined
 				? latestCacheHitRate.toFixed(1)
 				: "",
 		// Both shadow their run-stat fields: templates show them as cumulative
@@ -296,8 +330,10 @@ export function getFieldValues(
 		totalTokens: formatPositiveCount(totals.totalTokens),
 		sessionInput: totals.input > 0 ? formatTokens(totals.input) : "",
 		sessionOutput: totals.output > 0 ? formatTokens(totals.output) : "",
-		sessionCacheRead: totals.cacheRead > 0 ? formatTokens(totals.cacheRead) : "",
-		sessionCacheWrite: totals.cacheWrite > 0 ? formatTokens(totals.cacheWrite) : "",
+		sessionCacheRead:
+			totals.cacheRead > 0 ? formatTokens(totals.cacheRead) : "",
+		sessionCacheWrite:
+			totals.cacheWrite > 0 ? formatTokens(totals.cacheWrite) : "",
 		subscription: usingSubscription ? "(sub)" : "",
 		percent,
 		contextWindow: formatTokens(contextWindow),
@@ -310,7 +346,9 @@ export function getFieldValues(
 				: `• ${ctx.thinkingLevel}`
 			: "",
 		modelProvider:
-			footerData.getAvailableProviderCount() > 1 && model ? `(${model.provider})` : "",
+			footerData.getAvailableProviderCount() > 1 && model
+				? `(${model.provider})`
+				: "",
 		extensionStatuses: formatExtensionStatuses(footerData),
 		balanceLabel,
 		balanceStatus,
@@ -348,22 +386,33 @@ export function renderRunNotification(
 	);
 }
 
-function expandOptionalGroups(template: string, fields: Record<string, string>): string {
-	return template.replace(OPTIONAL_GROUP_PATTERN, (placeholder, contents: string) => {
-		const fieldMatches = Array.from(contents.matchAll(FIELD_PATTERN));
-		// Preserve bracketed text that does not contain fields, and keep unknown
-		// placeholders unchanged just like ordinary template text.
-		if (
-			fieldMatches.length === 0 ||
-			fieldMatches.some(([, fieldName]) => !Object.prototype.hasOwnProperty.call(fields, fieldName))
-		) {
-			return placeholder;
-		}
-		return fieldMatches.some(([, fieldName]) => fields[fieldName] !== "") ? contents : "";
-	});
+function expandOptionalGroups(
+	template: string,
+	fields: Record<string, string>,
+): string {
+	return template.replace(
+		OPTIONAL_GROUP_PATTERN,
+		(placeholder, contents: string) => {
+			const fieldMatches = Array.from(contents.matchAll(FIELD_PATTERN));
+			// Preserve bracketed text that does not contain fields, and keep unknown
+			// placeholders unchanged just like ordinary template text.
+			if (
+				fieldMatches.length === 0 ||
+				fieldMatches.some(([, fieldName]) => !Object.hasOwn(fields, fieldName))
+			) {
+				return placeholder;
+			}
+			return fieldMatches.some(([, fieldName]) => fields[fieldName] !== "")
+				? contents
+				: "";
+		},
+	);
 }
 
-function expandTemplate(template: string, fields: Record<string, string>): string {
+function expandTemplate(
+	template: string,
+	fields: Record<string, string>,
+): string {
 	const text = expandOptionalGroups(template, fields);
 	let result = "";
 	let cursor = 0;
@@ -373,7 +422,7 @@ function expandTemplate(template: string, fields: Record<string, string>): strin
 		result += text.slice(cursor, fieldStart);
 		cursor = fieldEnd;
 		const fieldName = match[1];
-		if (!Object.prototype.hasOwnProperty.call(fields, fieldName)) {
+		if (!Object.hasOwn(fields, fieldName)) {
 			result += match[0];
 			continue;
 		}
@@ -413,12 +462,20 @@ function expandLine(
 	const expandedOptionalGroups = expandOptionalGroups(line, fields);
 	const marker = findRightAlignMarker(expandedOptionalGroups);
 	if (marker === undefined) {
-		return { text: expandTemplate(expandedOptionalGroups, fields), right: undefined };
+		return {
+			text: expandTemplate(expandedOptionalGroups, fields),
+			right: undefined,
+		};
 	}
 	const markerEnd = marker.index + marker.length;
-	const left = expandTemplate(expandedOptionalGroups.slice(0, marker.index), fields);
+	const left = expandTemplate(
+		expandedOptionalGroups.slice(0, marker.index),
+		fields,
+	);
 	const right = expandTemplate(expandedOptionalGroups.slice(markerEnd), fields);
-	return right === "" ? { text: left, right: undefined } : { text: left + right, right: { left, right } };
+	return right === ""
+		? { text: left, right: undefined }
+		: { text: left + right, right: { left, right } };
 }
 
 /**
@@ -428,7 +485,9 @@ function expandLine(
  * (e.g. `{ :right}`) therefore keeps the text literal. A marker inside
  * `[ ... ]` is decoration, like any other bracketed text.
  */
-function findRightAlignMarker(line: string): { index: number; length: number } | undefined {
+function findRightAlignMarker(
+	line: string,
+): { index: number; length: number } | undefined {
 	let inSection = false;
 	for (let i = 0; i < line.length; i++) {
 		const ch = line[i];

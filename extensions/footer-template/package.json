@@ -1,45 +1,67 @@
 {
-  "name": "pi-footer-template",
-  "version": "0.5.0",
-  "description": "Render pi's footer from a configurable string template; time and response throughput are reported in a notification configured the same way; multi-provider account balance with session deltas mirrors pi-tidy-footer, plus Codex/Claude OAuth quota-window breakdowns mirror pi-usage/pi-fancy-footer, in a per-provider auto currency", 
-  "keywords": ["pi-package", "pi-extension", "tui", "footer", "statusline", "template", "cost", "usage", "balance", "quota", "currency", "tokens", "notification", "deepseek", "openrouter", "bigmodel", "zai", "codex", "claude"],
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/tangentyh/pi-collections.git",
-    "directory": "extensions/footer-template"
-  },
-  "homepage": "https://github.com/tangentyh/pi-collections/tree/main/extensions/footer-template",
-  "type": "module",
-  "pi": {
-    "extensions": ["./footer-template.ts"]
-  },
-  "scripts": {
-    "typecheck": "tsc --noEmit -p ../..",
-    "test": "echo \"no tests\"",
-    "prepublishOnly": "npm run typecheck"
-  },
-  "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "*",
-    "@earendil-works/pi-tui": "*"
-  },
-  "devDependencies": {
-    "@earendil-works/pi-ai": "^0.84.2",
-    "@earendil-works/pi-coding-agent": "^0.84.1",
-    "@earendil-works/pi-tui": "^0.84.1",
-    "@types/node": "^22.0.0",
-    "typescript": "^5.5.0"
-  },
-  "files": [
-    "footer-template.ts",
-    "format.ts",
-    "io.ts",
-    "types.ts",
-    "balance.ts",
-    "quota.ts",
-    "currency.ts",
-    "README.md",
-    "CHANGELOG.md",
-    "LICENSE"
-  ]
+	"name": "pi-footer-template",
+	"version": "0.5.0",
+	"description": "Render pi's footer from a configurable string template; time and response throughput are reported in a notification configured the same way; multi-provider account balance with session deltas mirrors pi-tidy-footer, plus Codex/Claude OAuth quota-window breakdowns mirror pi-usage/pi-fancy-footer, in a per-provider auto currency",
+	"keywords": [
+		"pi-package",
+		"pi-extension",
+		"tui",
+		"footer",
+		"statusline",
+		"template",
+		"cost",
+		"usage",
+		"balance",
+		"quota",
+		"currency",
+		"tokens",
+		"notification",
+		"deepseek",
+		"openrouter",
+		"bigmodel",
+		"zai",
+		"codex",
+		"claude"
+	],
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/tangentyh/pi-collections.git",
+		"directory": "extensions/footer-template"
+	},
+	"homepage": "https://github.com/tangentyh/pi-collections/tree/main/extensions/footer-template",
+	"type": "module",
+	"pi": {
+		"extensions": [
+			"./footer-template.ts"
+		]
+	},
+	"scripts": {
+		"typecheck": "tsc --noEmit -p ../..",
+		"test": "echo \"no tests\"",
+		"prepublishOnly": "npm run typecheck"
+	},
+	"peerDependencies": {
+		"@earendil-works/pi-coding-agent": "*",
+		"@earendil-works/pi-tui": "*"
+	},
+	"devDependencies": {
+		"@earendil-works/pi-ai": "^0.84.2",
+		"@earendil-works/pi-coding-agent": "^0.84.1",
+		"@earendil-works/pi-tui": "^0.84.1",
+		"@types/node": "^22.0.0",
+		"typescript": "^5.5.0"
+	},
+	"files": [
+		"footer-template.ts",
+		"format.ts",
+		"io.ts",
+		"types.ts",
+		"balance.ts",
+		"quota.ts",
+		"currency.ts",
+		"README.md",
+		"CHANGELOG.md",
+		"LICENSE"
+	]
 }

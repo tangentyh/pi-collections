@@ -4,7 +4,11 @@ import {
 	type ExtensionContext,
 	type KeybindingsManager,
 } from "@earendil-works/pi-coding-agent";
-import { CURSOR_MARKER, type EditorTheme, type TUI } from "@earendil-works/pi-tui";
+import {
+	CURSOR_MARKER,
+	type EditorTheme,
+	type TUI,
+} from "@earendil-works/pi-tui";
 
 const BLINK_MS = 530; // classic ~2 Hz terminal cursor blink
 
@@ -51,7 +55,12 @@ export default function (pi: ExtensionAPI) {
 			while (true) {
 				const inIdx = pendingFocus.indexOf(FOCUS_IN, processed);
 				const outIdx = pendingFocus.indexOf(FOCUS_OUT, processed);
-				const first = inIdx === -1 ? outIdx : outIdx === -1 ? inIdx : Math.min(inIdx, outIdx);
+				const first =
+					inIdx === -1
+						? outIdx
+						: outIdx === -1
+							? inIdx
+							: Math.min(inIdx, outIdx);
 				if (first === -1) break;
 				setTerminalFocused(pendingFocus.startsWith(FOCUS_IN, first));
 				processed = first + FOCUS_IN.length;
@@ -59,7 +68,8 @@ export default function (pi: ExtensionAPI) {
 			// Keep a trailing partial sequence (`ESC` or `ESC [`) for the
 			// next chunk; the rest of the buffer is irrelevant to us.
 			const tail = pendingFocus.slice(processed);
-			pendingFocus = tail.endsWith("\x1b") || tail.endsWith("\x1b[") ? tail : "";
+			pendingFocus =
+				tail.endsWith("\x1b") || tail.endsWith("\x1b[") ? tail : "";
 		};
 		process.stdin.on("data", stdinHandler);
 	};
@@ -77,7 +87,13 @@ export default function (pi: ExtensionAPI) {
 			// Keep the side effects of previously registered factories alive.
 			previousFactory?.(tui, theme, keybindings);
 			activeTui = tui;
-			currentEditor = new BlinkingCursorEditor(tui, theme, keybindings, ctx, () => terminalFocused);
+			currentEditor = new BlinkingCursorEditor(
+				tui,
+				theme,
+				keybindings,
+				ctx,
+				() => terminalFocused,
+			);
 
 			// Single interval for the process lifetime; unref so it never
 			// keeps the process alive on its own.
@@ -185,9 +201,11 @@ class BlinkingCursorEditor extends CustomEditor {
 		// hardware cursor (`\x1b[?25l`) for the rest of the frame.
 		if (!focused || !this.cursorVisibleAt(performance.now())) {
 			for (let i = 0; i < lines.length; i++) {
-				lines[i] = lines[i]!
-					.replace(/\x1b\[7m([\s\S]*?)\x1b\[(?:0|27)m/g, (_m, ch) => ch)
-					.replaceAll(CURSOR_MARKER, "");
+				lines[i] = lines[i]!.replace(
+					// biome-ignore lint/suspicious/noControlCharactersInRegex: \x1b is the ANSI ESC byte; this strips SGR reverse-video sequences from rendered rows
+					/\x1b\[7m([\s\S]*?)\x1b\[(?:0|27)m/g,
+					(_m, ch) => ch,
+				).replaceAll(CURSOR_MARKER, "");
 			}
 		}
 		return lines;

@@ -17,18 +17,19 @@ import { join } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 
 /** Display currencies: symbol and decimal places, like pi-tidy-footer. */
-export const CURRENCIES: Record<string, { symbol: string; decimals: number }> = {
-	AUD: { symbol: "A$", decimals: 2 },
-	CAD: { symbol: "C$", decimals: 2 },
-	CNY: { symbol: "¥", decimals: 2 },
-	EUR: { symbol: "€", decimals: 2 },
-	GBP: { symbol: "£", decimals: 2 },
-	HKD: { symbol: "HK$", decimals: 2 },
-	JPY: { symbol: "¥", decimals: 0 },
-	KRW: { symbol: "₩", decimals: 0 },
-	TWD: { symbol: "NT$", decimals: 2 },
-	USD: { symbol: "$", decimals: 3 },
-};
+export const CURRENCIES: Record<string, { symbol: string; decimals: number }> =
+	{
+		AUD: { symbol: "A$", decimals: 2 },
+		CAD: { symbol: "C$", decimals: 2 },
+		CNY: { symbol: "¥", decimals: 2 },
+		EUR: { symbol: "€", decimals: 2 },
+		GBP: { symbol: "£", decimals: 2 },
+		HKD: { symbol: "HK$", decimals: 2 },
+		JPY: { symbol: "¥", decimals: 0 },
+		KRW: { symbol: "₩", decimals: 0 },
+		TWD: { symbol: "NT$", decimals: 2 },
+		USD: { symbol: "$", decimals: 3 },
+	};
 
 /** Space-joined currency codes, for `/set-currency` help notifications. */
 export const CURRENCY_LIST = Object.keys(CURRENCIES).join(" ");
@@ -68,7 +69,9 @@ export function resolveDisplayCurrency(
 	configured: string,
 	provider: string | undefined,
 ): string {
-	return configured === AUTO_CURRENCY ? resolveAutoCurrency(provider) : configured;
+	return configured === AUTO_CURRENCY
+		? resolveAutoCurrency(provider)
+		: configured;
 }
 
 /** How long a fetched rate table stays usable (pi-tidy-footer: 24h). */
@@ -96,7 +99,9 @@ let stateCache: Record<string, unknown> | null = null;
 function readStateFile(file: string): Record<string, unknown> {
 	try {
 		const parsed: unknown = JSON.parse(readFileSync(file, "utf8"));
-		return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
+		return typeof parsed === "object" &&
+			parsed !== null &&
+			!Array.isArray(parsed)
 			? (parsed as Record<string, unknown>)
 			: {};
 	} catch {

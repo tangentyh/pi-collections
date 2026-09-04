@@ -2,10 +2,10 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
 	CONFIG_DIR_NAME,
-	getAgentDir,
 	type ExtensionContext,
+	getAgentDir,
 } from "@earendil-works/pi-coding-agent";
-import { CURRENCIES, AUTO_CURRENCY } from "./currency.js";
+import { AUTO_CURRENCY, CURRENCIES } from "./currency.js";
 
 interface SettingsObject {
 	[key: string]: unknown;
@@ -86,13 +86,17 @@ function getFooterTemplate(settings: SettingsObject): string | undefined {
 /** Object-form-only setting; "" disables the notification (see FooterConfiguration). */
 function getNotificationTemplate(settings: SettingsObject): string | undefined {
 	const value = settings.footerTemplate;
-	if (!isRecord(value) || typeof value.notificationTemplate !== "string") return undefined;
-	return value.notificationTemplate.trim() === "" ? "" : value.notificationTemplate;
+	if (!isRecord(value) || typeof value.notificationTemplate !== "string")
+		return undefined;
+	return value.notificationTemplate.trim() === ""
+		? ""
+		: value.notificationTemplate;
 }
 
 function getCompactionEnabled(settings: SettingsObject): boolean | undefined {
 	const compaction = settings.compaction;
-	if (!isRecord(compaction) || typeof compaction.enabled !== "boolean") return undefined;
+	if (!isRecord(compaction) || typeof compaction.enabled !== "boolean")
+		return undefined;
 	return compaction.enabled;
 }
 
@@ -102,12 +106,15 @@ function getCompactionEnabled(settings: SettingsObject): boolean | undefined {
  */
 function getCostCurrency(settings: SettingsObject): string {
 	const footer = settings.footerTemplate;
-	if (!isRecord(footer) || typeof footer.costCurrency !== "string") return AUTO_CURRENCY;
+	if (!isRecord(footer) || typeof footer.costCurrency !== "string")
+		return AUTO_CURRENCY;
 	const ccy = footer.costCurrency;
 	return ccy === AUTO_CURRENCY || CURRENCIES[ccy] ? ccy : AUTO_CURRENCY;
 }
 
-export function resolveFooterConfiguration(ctx: ExtensionContext): FooterConfiguration {
+export function resolveFooterConfiguration(
+	ctx: ExtensionContext,
+): FooterConfiguration {
 	const globalSettings = readSettingsFile(join(getAgentDir(), "settings.json"));
 	const projectSettings = ctx.isProjectTrusted()
 		? readSettingsFile(join(ctx.cwd, CONFIG_DIR_NAME, "settings.json"))
