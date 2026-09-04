@@ -60,6 +60,14 @@ root runs every suite via npm workspaces, `npm test -w <pkg-name>` runs one
 `extensions/<name>/tests/` as erasable-only TypeScript that Node runs
 directly, headlessly against the real installed pi-tui.
 
+`npm run lint` (Biome `check` from the single root `biome.json`, `recommended`
+preset) must pass: fix or `biome-ignore`-with-reason anything it reports, except
+the accepted `noExplicitAny` / `noNonNullAssertion` warnings (deliberate
+defensive access to pi internals). A `pre-commit` hook checks staged files and
+a `pre-push` hook runs typecheck + tests (installed by the root `prepare`
+script); `.github/workflows/ci.yml` enforces lint + typecheck + tests on
+push/PR, since hooks are bypassable with `--no-verify`.
+
 `pi install ./extensions/<name>` records a local path in
 `~/.pi/agent/settings.json` without copying; edited files take effect in a
 running pi with `/reload`.
