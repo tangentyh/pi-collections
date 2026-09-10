@@ -11,6 +11,12 @@ Conventions for AI agents and humans working in this repo. The repo is a
     the `pi-package` keyword, and a `files` field listing the entry, README, LICENSE
   - `<name>.ts` — semantic entry file (same name as the directory)
   - `README.md`, `CHANGELOG.md`, `LICENSE`
+- `archive/<name>/` — retired material (dropped-idea research, deprecated/
+  removed extensions), moved verbatim from `extensions/` plus an `ARCHIVED.md`
+  status note. Deliberately outside every automation scope: not an npm
+  workspace member, not typechecked (`tsconfig.json` covers only
+  `extensions/**/*.ts`), force-ignored by Biome, invisible to the publish
+  workflow. See `archive/README.md` for the archiving procedure.
 - Root `package.json` — **dev wrapper only**:
   - `"private": true`, never published
   - no `pi` manifest → the root is not installable via `pi install`
