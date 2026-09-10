@@ -115,8 +115,8 @@ Release flow:
 
 ```bash
 # bump version in extensions/<name>/package.json (+ a CHANGELOG.md entry;
-# refresh keywords too), commit,
-# push main, THEN tag the pushed commit and push the tag:
+# refresh keywords too), commit on a branch, open a PR and let it merge,
+# THEN tag the resulting commit on main and push the tag:
 git tag -a <npm-package-name>@<version> -m "..." && git push origin <npm-package-name>@<version>
 ```
 
@@ -124,11 +124,16 @@ Gotchas:
 
 - `npm ci` requires `package-lock.json` to be in sync; run `npm install` at the
   root after any dependency/version change and commit the lockfile.
+- `protect-release-tags` blocks updating or deleting `pi-*@*` tags: a tag on
+  the wrong commit can only be superseded by a new version, not moved.
 - One-time setup per new package: configure its Trusted Publisher on npmjs.com
   (GitHub Actions → `tangentyh` / `pi-collections` / `publish.yml`).
 
 ## Conventions
 
+- **Never push to `main`** — PRs only: `protect-main` requires linear history
+  (squash/rebase merges), a green `check` and resolved threads, and rejects
+  direct pushes, force-pushes and deletions. Tag pushes are unaffected.
 - Before working on an extension, read that extension's `README.md` first.
 - Extension names are `pi-<name>` on npm; directories keep the plain name.
 - Entry files are semantic (`<name>.ts`), not `index.ts`.
