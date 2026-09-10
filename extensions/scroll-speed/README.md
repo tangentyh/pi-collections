@@ -80,6 +80,8 @@ wins after a restart — to make a value permanent, put it in settings.json.
 
 - Only affects fullscreen (alt-screen) mode; regular mode scrolls via the
   terminal's own scrollback and is intentionally untouched.
+- Since pi 0.85, holding `Alt` while wheeling scrolls five times farther —
+  the multiplier applies on top of the lines-per-notch set here.
 - The alt-screen renderer exposes a mutable `wheelScrollLines` field. This is
   an internal pi-tui field, not a documented setting — it may change in
   future versions.
