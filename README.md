@@ -16,7 +16,7 @@ Each package has its own `README.md` and `LICENSE` (MIT) in its directory — cl
 
 ## Requirements
 
-- **pi** 0.84+ — the extensions target the pi version this workspace is developed against (see `devDependencies`); pi 0.84 ships with npm as `@earendil-works/pi-coding-agent`
+- **pi** 0.85+ — the extensions target the pi version this workspace is developed against (see `devDependencies`); pi 0.85 ships with npm as `@earendil-works/pi-coding-agent`
 - **Node.js 18+** — packages are ESM (`"type": "module"`)
 - **npm 7+** — required for the `workspaces` feature used by this repo
 - **TypeScript 5.5+** (dev only) — for `npm run typecheck`

@@ -99,7 +99,7 @@ DeepSeek publishes them in UTC and your local timezone must not affect the tier.
 
 ## Compatibility
 
-- pi 0.84+ (uses the `message_end` extension event and `ctx.ui` status API).
+- pi 0.85+ (uses the `message_end` extension event and `ctx.ui` status API).
 - Tested with `deepseek-v4-flash`, `deepseek-v4-pro`, and `deepseek-v4-flash-vision-exp`
   on the official DeepSeek API.
 - Cost correctness is display-side: like all pi cost accounting, it is an estimate

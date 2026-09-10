@@ -60,7 +60,7 @@ stays dormant.
 The pin is a non-capturing full-width overlay anchored top-left; its text
 is resolved from the live transcript tree on every paint (message offsets
 cached per width + content height), with no polling timers. Click interception
-wraps the renderer instance's internal selection handler — in pi 0.84.x,
+wraps the renderer instance's internal selection handler — in pi 0.85.x,
 click events are consumed centrally before any public extension API can see
 them, and that handler is the only seam left. The same instance patching
 teaches `hasOverlay()` to ignore our non-capturing bar (and only ours), so
