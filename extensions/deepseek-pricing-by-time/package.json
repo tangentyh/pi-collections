@@ -6,6 +6,10 @@
 		"pi-package",
 		"pi-extension",
 		"deepseek",
+		"deepseek-flash",
+		"deepseek-v4",
+		"v4.1",
+		"v41",
 		"pricing",
 		"cost",
 		"billing",
@@ -30,7 +34,7 @@
 	},
 	"scripts": {
 		"typecheck": "tsc --noEmit -p ../..",
-		"test": "echo \"no tests\"",
+		"test": "node tests/test.ts",
 		"prepublishOnly": "npm run typecheck"
 	},
 	"peerDependencies": {
