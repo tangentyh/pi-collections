@@ -19,15 +19,17 @@ import {
 // applies to every instant. The message's own timestamp selects the period, then
 // `tierAt()` selects peak vs. off-peak inside it.
 //
-// Two aliases are also modelled:
-//   - `deepseek-v4-flash` / `deepseek-v4-flash-vision-exp` were retired on
-//     2026-09-10 and are temporarily routed to V4.1 Flash, billed at Flash rates.
-//   - `deepseek-v4-pro` is retired from 2026-09-14T04:00:00Z (`V4_PRO_RETIRED`)
-//     and is served by V4.1 Flash at Flash rates until V4.1 Pro ships. Its
-//     second period is what expresses that rerouting, regardless of whether
-//     DeepSeek echoes the legacy id or `deepseek-flash`.
+// One alias is also modelled: `deepseek-v4-flash` /
+// `deepseek-v4-flash-vision-exp` were retired on 2026-09-10 and are temporarily
+// routed to V4.1 Flash, billed at Flash rates.
 //
-// Only forward-looking boundaries are encoded. The 2026-09-10 Flash price cut is
+// `deepseek-v4-pro` keeps its own rates with no end date. DeepSeek announced a
+// 2026-09-14T04:00:00Z retirement that would have routed it to V4.1 Flash, then
+// reversed that decision — the pricing page now states Pro API service continues
+// after September 14, 2026 with billing unchanged — so no retirement period is
+// encoded.
+//
+// No forward-looking boundaries are encoded today. The 2026-09-10 Flash price cut is
 // intentionally *not* a boundary: corrections are persisted per message at
 // `message_end` and history is never re-priced, so no future message can predate
 // it. (A replay-based re-pricing path would need a `FLASH_V4 -> FLASH_V41`
@@ -69,16 +71,14 @@ export interface RatePeriod {
  */
 const PEAK_HOURS_UTC = new Set([1, 2, 3, 6, 7, 8, 9]);
 
-/** 2026-09-14T04:00:00Z: from this instant `deepseek-v4-pro` bills at Flash rates. */
-export const V4_PRO_RETIRED = Date.UTC(2026, 8, 14, 4);
-
 // DeepSeek-V4.1-Flash (canonical id `deepseek-flash`), shipped 2026-09-10.
 const FLASH_V41: Record<Tier, DeepSeekRates> = {
 	peak: { input: 0.3, output: 1.2, cacheRead: 0.006, cacheWrite: 0 },
 	offPeak: { input: 0.15, output: 0.6, cacheRead: 0.003, cacheWrite: 0 },
 };
 
-// DeepSeek-V4-Pro, unchanged until it is retired in favour of V4.1 Flash.
+// DeepSeek-V4-Pro (DeepSeek-V4-Pro-0813). The announced 2026-09-14 retirement
+// was reversed, so it keeps serving — and billing — at these rates.
 const V4_PRO: Record<Tier, DeepSeekRates> = {
 	peak: { input: 1.32, output: 3.96, cacheRead: 0.044, cacheWrite: 0 },
 	offPeak: { input: 0.66, output: 1.98, cacheRead: 0.022, cacheWrite: 0 },
@@ -95,15 +95,9 @@ const SCHEDULES: Record<string, RatePeriod[]> = {
 	"deepseek-v4-flash-vision-exp": [
 		{ rates: FLASH_V41, note: LEGACY_FLASH_NOTE },
 	],
-	// Retired 2026-09-14T04:00:00Z; served by V4.1 Flash at Flash rates.
-	"deepseek-v4-pro": [
-		{ rates: V4_PRO },
-		{
-			from: V4_PRO_RETIRED,
-			rates: FLASH_V41,
-			note: "V4 Pro retired, routed to V4.1 Flash",
-		},
-	],
+	// No retirement: the announced 2026-09-14 routing to V4.1 Flash was reversed,
+	// and Pro billing continues unchanged.
+	"deepseek-v4-pro": [{ rates: V4_PRO }],
 };
 
 function instantAt(at: number | Date): number {
@@ -133,9 +127,10 @@ export function periodAt(
 	if (!modelId || !Object.hasOwn(SCHEDULES, modelId)) return undefined;
 	const schedule = SCHEDULES[modelId];
 	const ms = instantAt(at);
-	// Periods are declared in ascending `from` order (only forward-looking
-	// boundaries are encoded), so the last one already in effect is the active
-	// one; the from-less first period is the fallback before any boundary.
+	// Periods are declared in ascending `from` order, so the last one already in
+	// effect is the active one; the from-less first period is the fallback before
+	// any boundary. (No multi-period schedule exists today, but the lookup
+	// supports future boundaries.)
 	let active = schedule[0];
 	for (const period of schedule) {
 		if (period.from !== undefined && period.from <= ms) active = period;

@@ -25,7 +25,7 @@ bills.
   and sets a footer status (`peak ⚠️`/`off-peak`) that only updates when the tier
   flips (disableable, see [Configuration](#configuration)).
 
-## Official rate schedule (as of 2026-09-10)
+## Official rate schedule (as of 2026-09-12)
 
 Peak hours: **01:00–04:00 & 06:00–10:00 UTC, Monday–Friday** (09:00–12:00 &
 14:00–18:00 Beijing). All other hours — including weekends — are off-peak.
@@ -37,10 +37,8 @@ Off-peak rates are exactly half of peak. DeepSeek does not charge for cache writ
 | `deepseek-flash` (V4.1-Flash) | off-peak | $0.15 /M | $0.60 /M | $0.003 /M | $0 |
 | `deepseek-v4-flash`, `deepseek-v4-flash-vision-exp` (legacy ids, routed to V4.1 Flash) | peak | $0.30 /M | $1.20 /M | $0.006 /M | $0 |
 | `deepseek-v4-flash`, `deepseek-v4-flash-vision-exp` (legacy ids, routed to V4.1 Flash) | off-peak | $0.15 /M | $0.60 /M | $0.003 /M | $0 |
-| `deepseek-v4-pro` until 2026-09-14 04:00 UTC | peak | $1.32 /M | $3.96 /M | $0.044 /M | $0 |
-| `deepseek-v4-pro` until 2026-09-14 04:00 UTC | off-peak | $0.66 /M | $1.98 /M | $0.022 /M | $0 |
-| `deepseek-v4-pro` from 2026-09-14 04:00 UTC (routed to V4.1 Flash) | peak | $0.30 /M | $1.20 /M | $0.006 /M | $0 |
-| `deepseek-v4-pro` from 2026-09-14 04:00 UTC (routed to V4.1 Flash) | off-peak | $0.15 /M | $0.60 /M | $0.003 /M | $0 |
+| `deepseek-v4-pro` (DeepSeek-V4-Pro-0813) | peak | $1.32 /M | $3.96 /M | $0.044 /M | $0 |
+| `deepseek-v4-pro` (DeepSeek-V4-Pro-0813) | off-peak | $0.66 /M | $1.98 /M | $0.022 /M | $0 |
 
 ### Timeline
 
@@ -50,8 +48,10 @@ Off-peak rates are exactly half of peak. DeepSeek does not charge for cache writ
   rates (peak input $0.44 → $0.30 per M, output $1.32 → $1.20; off-peak exactly
   half). `deepseek-v4-flash` and `deepseek-v4-flash-vision-exp` are retired but
   temporarily routed to V4.1 Flash and billed at Flash rates.
-- **2026-09-14 04:00 UTC** — `deepseek-v4-pro` is retired and routed to V4.1 Flash
-  at Flash rates, until V4.1 Pro ships (no date announced yet).
+- **2026-09-14 04:00 UTC (cancelled)** — DeepSeek had announced that
+  `deepseek-v4-pro` would retire at this instant and route to V4.1 Flash, then
+  reversed the decision: Pro keeps serving — and billing — unchanged past that
+  instant until further notice. No retirement period is encoded.
 
 ### Effective-dated schedules and id routing
 
@@ -61,7 +61,8 @@ instant plus the peak/off-peak rates from that instant on. A period applies unti
 next one begins, and the first (from-less) period applies to every earlier instant.
 The message's timestamp selects the period; the timestamp's UTC day and hour then
 select peak vs. off-peak inside it. Only **forward-looking** boundaries are encoded —
-today that is just the 2026-09-14 Pro retirement.
+today there are none: every model has a single from-less period, and the mechanism
+stays ready for the next price change or retirement.
 
 There is deliberately **no 2026-09-10 boundary** in the schedule. pi persists the
 corrected cost on every message at `message_end`, and history is never re-priced, so
@@ -75,8 +76,7 @@ fallback is what keeps the legacy flash ids priced: DeepSeek echoes a
 `deepseek-v4-flash` (or `-vision-exp`) request as `"model": "deepseek-flash"`, but
 pi's bundled catalog (0.85.1) has no `deepseek-flash` entry, and an unknown id would
 otherwise disable re-pricing entirely and leave pi's stale static catalog cost in
-place. `deepseek-v4-pro` still echoes its own id today; after retirement the schedule
-prices it at Flash rates whichever of the two ids comes back.
+place. `deepseek-v4-pro` echoes its own id.
 
 ## Install
 
@@ -144,13 +144,12 @@ timezone must not affect the tier. A period's optional `note` is what
 `/deepseek-tier` appends for a retired or routed id.
 
 Append a period to express a future price change, keeping each list in ascending
-`from` order — e.g. when V4.1 Pro ships, add a third period to `deepseek-v4-pro`
-(with the real launch instant and rates standing in for `V41_PRO_LAUNCH`/`V41_PRO`):
+`from` order — e.g. when V4.1 Pro ships, add a second period to `deepseek-v4-pro`
+(with placeholders standing in for the real launch instant and rates):
 
 ```ts
 "deepseek-v4-pro": [
   { rates: V4_PRO },
-  { from: V4_PRO_RETIRED, rates: FLASH_V41, note: "V4 Pro retired, routed to V4.1 Flash" },
   { from: V41_PRO_LAUNCH, rates: V41_PRO },
 ],
 ```
@@ -163,8 +162,8 @@ period). Add a row to the rate table above when the published prices change.
 - pi 0.85+ (uses the `message_end` extension event and `ctx.ui` status API).
 - Tested with `deepseek-flash` (V4.1 Flash, the canonical id), the legacy ids
   `deepseek-v4-flash` / `deepseek-v4-flash-vision-exp` (routed to V4.1 Flash), and
-  `deepseek-v4-pro` (Pro rates until 2026-09-14 04:00 UTC, Flash rates from then) on
-  the official DeepSeek API.
+  `deepseek-v4-pro` (Pro rates — the announced 2026-09-14 retirement was reversed)
+  on the official DeepSeek API.
 - Cost correctness is display-side: like all pi cost accounting, it is an estimate
   based on reported usage tokens and published rates, not an invoice.
 - Compaction and branch-summary entries still carry pi's static catalog cost:
