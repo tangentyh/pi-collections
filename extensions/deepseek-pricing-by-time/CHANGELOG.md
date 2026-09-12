@@ -5,6 +5,17 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-09-12
+
+### Fixed
+
+- Dropped the cancelled `deepseek-v4-pro` retirement cutoff: DeepSeek reversed
+  the announced 2026-09-14 04:00 UTC retirement (Pro API service continues
+  with billing unchanged), so `deepseek-v4-pro` stays on Pro rates past that
+  instant instead of cutting over to V4.1 Flash rates. The `V4_PRO_RETIRED`
+  boundary and export are removed and the schedule is back to a single
+  from-less Pro period
+
 ## [0.3.0] - 2026-09-11
 
 ### Added
