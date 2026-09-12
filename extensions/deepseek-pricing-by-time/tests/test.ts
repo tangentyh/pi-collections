@@ -28,7 +28,6 @@ import deepseekPricingByTime, {
 	reprice,
 	type Tier,
 	tierAt,
-	V4_PRO_RETIRED,
 } from "../deepseek-pricing-by-time.ts";
 
 // Every pricing assertion below is expressed in UTC; forcing a non-UTC zone
@@ -74,7 +73,7 @@ const utc = (
 
 // ── hardcoded fixtures from the published schedule ────────────────────
 
-const V4_PRO_RETIRED_MS = Date.UTC(2026, 8, 14, 4); // 2026-09-14T04:00:00Z
+const CANCELLED_PRO_RETIREMENT_MS = Date.UTC(2026, 8, 14, 4); // 2026-09-14T04:00:00Z: the announced-then-cancelled Pro retirement instant
 
 const FLASH_PEAK: DeepSeekRates = {
 	input: 0.3,
@@ -111,11 +110,7 @@ const OFF_PEAK_AT = utc(2026, 8, 10, 12); // Thu 2026-09-10 12:00Z
 
 const LEGACY_IDS = ["deepseek-v4-flash", "deepseek-v4-flash-vision-exp"];
 
-// ── V4_PRO_RETIRED constant ───────────────────────────────────────────
-
-check("V4_PRO_RETIRED equals 2026-09-14T04:00:00Z (Date.UTC)", () => {
-	assert.equal(V4_PRO_RETIRED, V4_PRO_RETIRED_MS);
-});
+// ── fixture weekday assumptions ─────────────────────────────────────────
 
 check(
 	"fixture weekday assumptions: 09-09 Wed, 09-12 Sat, 09-13 Sun, 09-14 Mon",
@@ -159,7 +154,7 @@ for (const [name, date, expected] of tierCases) {
 	});
 }
 
-// ── 2. ratesAt: V4.1-Flash values, legacy routing, pro retirement ─────
+// ── 2. ratesAt: V4.1-Flash values, legacy routing, pro (no retirement) ──
 
 check("ratesAt deepseek-flash at peak = V4.1 Flash peak", () => {
 	assert.deepEqual(ratesAt("deepseek-flash", PEAK_AT), FLASH_PEAK);
@@ -192,40 +187,44 @@ for (const legacy of LEGACY_IDS) {
 	});
 }
 
-check("ratesAt deepseek-v4-pro at V4_PRO_RETIRED-1ms = Pro peak", () => {
-	// 2026-09-14T03:59:59.999Z is a Monday inside [01:00, 04:00) -> peak.
-	assert.equal(tierAt(new Date(V4_PRO_RETIRED_MS - 1)), "peak");
-	assert.deepEqual(
-		ratesAt("deepseek-v4-pro", V4_PRO_RETIRED_MS - 1),
-		V4_PRO_PEAK,
-	);
-});
-
 check(
-	"ratesAt deepseek-v4-pro at V4_PRO_RETIRED exactly = V4.1 Flash off-peak",
+	"ratesAt deepseek-v4-pro just before the cancelled retirement = Pro peak",
 	() => {
-		// 2026-09-14T04:00:00Z is Monday but outside every peak window -> off-peak.
-		assert.equal(tierAt(new Date(V4_PRO_RETIRED_MS)), "offPeak");
+		// 2026-09-14T03:59:59.999Z is a Monday inside [01:00, 04:00) -> peak.
+		assert.equal(tierAt(new Date(CANCELLED_PRO_RETIREMENT_MS - 1)), "peak");
 		assert.deepEqual(
-			ratesAt("deepseek-v4-pro", V4_PRO_RETIRED_MS),
-			FLASH_OFF_PEAK,
+			ratesAt("deepseek-v4-pro", CANCELLED_PRO_RETIREMENT_MS - 1),
+			V4_PRO_PEAK,
 		);
 	},
 );
 
 check(
-	"ratesAt deepseek-v4-pro at a post-retirement peak instant = V4.1 Flash peak",
+	"ratesAt deepseek-v4-pro at the cancelled retirement instant = Pro off-peak",
 	() => {
-		// Mon 2026-09-14 07:00Z, inside [06:00, 10:00): routing wins, tier is peak.
+		// 2026-09-14T04:00:00Z is Monday but outside every peak window ->
+		// off-peak. The announced retirement was reversed, so Pro rates apply.
+		assert.equal(tierAt(new Date(CANCELLED_PRO_RETIREMENT_MS)), "offPeak");
+		assert.deepEqual(
+			ratesAt("deepseek-v4-pro", CANCELLED_PRO_RETIREMENT_MS),
+			V4_PRO_OFF_PEAK,
+		);
+	},
+);
+
+check(
+	"ratesAt deepseek-v4-pro at a post-cancellation peak instant = Pro peak",
+	() => {
+		// Mon 2026-09-14 07:00Z, inside [06:00, 10:00): tier is peak, model is Pro.
 		assert.deepEqual(
 			ratesAt("deepseek-v4-pro", utc(2026, 8, 14, 7)),
-			FLASH_PEAK,
+			V4_PRO_PEAK,
 		);
 	},
 );
 
 check(
-	"ratesAt deepseek-v4-pro off-peak before retirement = Pro off-peak",
+	"ratesAt deepseek-v4-pro off-peak before the cancelled retirement = Pro off-peak",
 	() => {
 		// Sun 2026-09-13 12:00Z: weekend off-peak, pro still served by Pro.
 		assert.deepEqual(
@@ -236,12 +235,12 @@ check(
 );
 
 check(
-	"ratesAt deepseek-v4-pro off-peak after retirement = V4.1 Flash off-peak",
+	"ratesAt deepseek-v4-pro off-peak after the cancelled retirement = Pro off-peak",
 	() => {
-		// Mon 2026-09-14 12:00Z: off-peak, past the retirement instant.
+		// Mon 2026-09-14 12:00Z: off-peak, past the cancelled retirement instant.
 		assert.deepEqual(
 			ratesAt("deepseek-v4-pro", utc(2026, 8, 14, 12)),
-			FLASH_OFF_PEAK,
+			V4_PRO_OFF_PEAK,
 		);
 	},
 );
@@ -284,29 +283,21 @@ check("periodAt returns the first period for a from-less schedule", () => {
 	assert.deepEqual(period.rates, { peak: FLASH_PEAK, offPeak: FLASH_OFF_PEAK });
 });
 
-check(
-	"periodAt applies the first period before any from (pro, ancient instant)",
-	() => {
-		const period: RatePeriod | undefined = periodAt(
-			"deepseek-v4-pro",
-			utc(2020, 0, 1),
-		);
-		assert.ok(period, "pro must have a period");
+check("periodAt pro has a single note-less period at every instant", () => {
+	for (const at of [
+		utc(2020, 0, 1),
+		utc(2026, 8, 13, 12),
+		new Date(CANCELLED_PRO_RETIREMENT_MS),
+		utc(2026, 8, 14, 7),
+	]) {
+		const period: RatePeriod | undefined = periodAt("deepseek-v4-pro", at);
+		assert.ok(period, `pro must have a period at ${at.toISOString()}`);
 		assert.deepEqual(period.rates, {
 			peak: V4_PRO_PEAK,
 			offPeak: V4_PRO_OFF_PEAK,
 		});
-	},
-);
-
-check("periodAt carries a pro -> Flash routing note after retirement", () => {
-	const period: RatePeriod | undefined = periodAt(
-		"deepseek-v4-pro",
-		V4_PRO_RETIRED_MS,
-	);
-	assert.ok(period, "pro must have a post-retirement period");
-	assert.match(period.note ?? "", /flash/i, "note must mention Flash routing");
-	assert.deepEqual(period.rates, { peak: FLASH_PEAK, offPeak: FLASH_OFF_PEAK });
+		assert.equal(period.note, undefined, "pro must carry no routing note");
+	}
 });
 
 check("periodAt unknown / undefined model ids -> undefined", () => {
@@ -577,7 +568,7 @@ check(
 );
 
 check("message_end trusts a known responseModel over message.model", () => {
-	// model says pro, echoed responseModel says flash, post-retirement peak.
+	// model says pro, echoed responseModel says flash, post-cancellation peak.
 	const result = runMessageEnd(
 		assistantMessage({
 			model: "deepseek-v4-pro",
@@ -588,50 +579,60 @@ check("message_end trusts a known responseModel over message.model", () => {
 	closeCost(costFrom(result), FLASH_PEAK_COST, "flash peak");
 });
 
-check("message_end bills deepseek-v4-pro at Pro peak before retirement", () => {
-	const result = runMessageEnd(
-		assistantMessage({
-			model: "deepseek-v4-pro",
-			responseModel: "deepseek-v4-pro",
-			timestamp: Date.UTC(2026, 8, 11, 7), // Fri 07:00Z = peak, pre-retirement
-		}),
-	);
-	closeCost(costFrom(result), V4_PRO_PEAK_COST, "pro peak");
-});
-
 check(
-	"message_end bills deepseek-v4-pro at Flash peak after retirement",
+	"message_end bills deepseek-v4-pro at Pro peak (pre-cancellation instant)",
 	() => {
 		const result = runMessageEnd(
 			assistantMessage({
 				model: "deepseek-v4-pro",
 				responseModel: "deepseek-v4-pro",
-				timestamp: Date.UTC(2026, 8, 14, 7), // Mon 07:00Z = peak, post-retirement
+				timestamp: Date.UTC(2026, 8, 11, 7), // Fri 07:00Z = peak, pre-cancellation
 			}),
 		);
-		closeCost(costFrom(result), FLASH_PEAK_COST, "flash peak after retirement");
+		closeCost(costFrom(result), V4_PRO_PEAK_COST, "pro peak");
 	},
 );
 
-check("message_end pro off-peak before vs after retirement", () => {
-	const before = runMessageEnd(
-		assistantMessage({
-			model: "deepseek-v4-pro",
-			responseModel: "deepseek-v4-pro",
-			timestamp: Date.UTC(2026, 8, 13, 12), // Sun 12:00Z = off-peak
-		}),
-	);
-	closeCost(costFrom(before), V4_PRO_OFF_PEAK_COST, "pro off-peak");
+check(
+	"message_end bills deepseek-v4-pro at Pro peak after the cancelled retirement",
+	() => {
+		const result = runMessageEnd(
+			assistantMessage({
+				model: "deepseek-v4-pro",
+				responseModel: "deepseek-v4-pro",
+				timestamp: Date.UTC(2026, 8, 14, 7), // Mon 07:00Z = peak, post-cancellation
+			}),
+		);
+		closeCost(
+			costFrom(result),
+			V4_PRO_PEAK_COST,
+			"pro peak after cancellation",
+		);
+	},
+);
 
-	const after = runMessageEnd(
-		assistantMessage({
-			model: "deepseek-v4-pro",
-			responseModel: "deepseek-v4-pro",
-			timestamp: Date.UTC(2026, 8, 14, 12), // Mon 12:00Z = off-peak
-		}),
-	);
-	closeCost(costFrom(after), FLASH_OFF_PEAK_COST, "flash off-peak");
-});
+check(
+	"message_end pro off-peak before vs after the cancelled retirement",
+	() => {
+		const before = runMessageEnd(
+			assistantMessage({
+				model: "deepseek-v4-pro",
+				responseModel: "deepseek-v4-pro",
+				timestamp: Date.UTC(2026, 8, 13, 12), // Sun 12:00Z = off-peak
+			}),
+		);
+		closeCost(costFrom(before), V4_PRO_OFF_PEAK_COST, "pro off-peak");
+
+		const after = runMessageEnd(
+			assistantMessage({
+				model: "deepseek-v4-pro",
+				responseModel: "deepseek-v4-pro",
+				timestamp: Date.UTC(2026, 8, 14, 12), // Mon 12:00Z = off-peak
+			}),
+		);
+		closeCost(costFrom(after), V4_PRO_OFF_PEAK_COST, "pro off-peak");
+	},
+);
 
 check(
 	"message_end ignores messages whose model and responseModel are both unknown",
