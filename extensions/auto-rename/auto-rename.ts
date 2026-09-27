@@ -1,8 +1,13 @@
 // index.ts — entry point: event wiring + orchestration.
-import type {
-	ExtensionAPI,
-	ExtensionContext,
+import { join } from "node:path";
+import {
+	type ExtensionAPI,
+	type ExtensionCommandContext,
+	type ExtensionContext,
+	getAgentDir,
+	type ModelRegistry,
 } from "@earendil-works/pi-coding-agent";
+import type { AutocompleteItem } from "@earendil-works/pi-tui";
 import type { Config } from "./config.js";
 import { buildContext, type NamingContext } from "./context.js";
 import { debug, initDebug } from "./debug.js";
@@ -12,6 +17,8 @@ import {
 	type GenerateNamesResult,
 	generateNames,
 	type NamingSession,
+	resolveModel,
+	splitIntoProviderAndModelId,
 	UI_RENAME_TIMEOUT_MS,
 } from "./naming.js";
 import {
@@ -64,9 +71,32 @@ interface RenameOptions {
 	currentInput?: string;
 }
 
-/** Optional test seam: overrides config loading (production uses ./config.js). */
+/** Optional test seams: override config loading and settings persistence. */
 export interface AutoRenameDeps {
 	loadConfig?: (ctx: ExtensionContext) => Config | Promise<Config>;
+	/** Persist the `namingModel` override (production writes global settings). */
+	writeNamingModel?: (model: string) => boolean;
+}
+
+/** Values `default`-like aliases may take to clear the override. */
+const MODEL_DEFAULT_ALIASES = new Set(["default", "reset", "off", "none"]);
+
+/**
+ * One-line status for `/auto-rename model` with no value: the configured
+ * override, the model the next naming call actually resolves to, and where the
+ * override is persisted.
+ */
+function describeNamingModel(
+	ctx: ExtensionCommandContext,
+	cfg: Config,
+): string {
+	const configured = cfg.namingModel || "default (session model)";
+	const resolved = resolveModel(ctx.modelRegistry, ctx.model, cfg);
+	const effective = resolved
+		? `${resolved.provider}/${resolved.id}`
+		: "none (no session model)";
+	const settingsPath = join(getAgentDir(), "settings.json");
+	return `Auto-rename naming model: ${configured} — effective: ${effective} — override saved in ${settingsPath}`;
 }
 
 /**
@@ -124,6 +154,13 @@ export default function (pi: ExtensionAPI, deps?: AutoRenameDeps): void {
 	let state: RenameState = createState();
 	let cfg: Config | undefined;
 	/**
+	 * ModelRegistry of the current session, refreshed whenever the config cache
+	 * is (re)populated. Command argument completion has no ctx, so this is the
+	 * only handle it can use to list models. Read-only, and replaced on every
+	 * `session_start`, so it cannot outlive its session runtime.
+	 */
+	let latestRegistry: ModelRegistry | undefined;
+	/**
 	 * Per-generation abort controller. Aborted on `session_shutdown` — every
 	 * replacement path (reload/new/resume/fork/quit) emits it to the old runner
 	 * before invalidation — and re-minted on `session_start`. Its signal is
@@ -142,6 +179,7 @@ export default function (pi: ExtensionAPI, deps?: AutoRenameDeps): void {
 	 */
 	async function config(ctx: ExtensionContext): Promise<Config> {
 		if (!cfg) {
+			latestRegistry = ctx.modelRegistry;
 			const load =
 				deps?.loadConfig ??
 				(async (ctx: ExtensionContext) => {
@@ -152,6 +190,102 @@ export default function (pi: ExtensionAPI, deps?: AutoRenameDeps): void {
 		}
 		return cfg;
 	}
+
+	/**
+	 * `/auto-rename model [<provider/modelId> | default]` — read or persist the
+	 * `autoRename.namingModel` override. `default` (and its aliases) clears it so
+	 * naming follows the session's current model again. The write targets the
+	 * global settings file; a project-level value still shadows it. The config
+	 * cache is dropped after a successful write, so the change applies to the
+	 * next rename without `/reload`.
+	 */
+	pi.registerCommand("auto-rename", {
+		description:
+			"Naming model for auto-rename: /auto-rename model <provider/modelId> = set, default = follow the session model, no args = show",
+		getArgumentCompletions: (prefix) => {
+			const spaceIdx = prefix.indexOf(" ");
+			if (spaceIdx === -1) {
+				const sub = prefix.trimStart();
+				return [
+					{
+						value: "model",
+						label: "model",
+						description: "provider/modelId used for naming, or default",
+					},
+				].filter((item) => item.value.startsWith(sub));
+			}
+			if (prefix.slice(0, spaceIdx).trim() !== "model") return null;
+			const needle = prefix.slice(spaceIdx + 1).trim();
+			const items: AutocompleteItem[] = [
+				{
+					value: "default",
+					label: "default",
+					description: "follow the session's current model",
+				},
+				...(latestRegistry?.getAvailable() ?? []).map((m) => ({
+					value: `${m.provider}/${m.id}`,
+					label: `${m.provider}/${m.id}`,
+					description: m.name,
+				})),
+			];
+			const filtered = items.filter((item) => item.value.startsWith(needle));
+			return filtered.length > 0 ? filtered : null;
+		},
+		handler: async (args, ctx) => {
+			const tokens = args.trim().split(/\s+/).filter(Boolean);
+			const sub = tokens[0];
+			if (sub !== undefined && sub !== "model") {
+				ctx.ui.notify(
+					`Unknown subcommand "${sub}". Usage: /auto-rename model [<provider/modelId> | default]`,
+					"warning",
+				);
+				return;
+			}
+			const value = tokens.slice(1).join(" ");
+			const current = await config(ctx);
+			if (!value) {
+				ctx.ui.notify(describeNamingModel(ctx, current), "info");
+				return;
+			}
+			const clear = MODEL_DEFAULT_ALIASES.has(value.toLowerCase());
+			const next = clear ? "" : value;
+			if (!clear) {
+				const parsed = splitIntoProviderAndModelId(next);
+				const found =
+					parsed && ctx.modelRegistry.find(parsed.provider, parsed.modelId);
+				if (!found) {
+					ctx.ui.notify(
+						`Unknown model "${next}". Pick one from the completion list, or use "default" to follow the session model.`,
+						"warning",
+					);
+					return;
+				}
+			}
+			const write =
+				deps?.writeNamingModel ??
+				(await import("./io.js")).writeGlobalNamingModel;
+			if (!write(next)) {
+				ctx.ui.notify(
+					"Failed to write the naming model to settings.json — see the console for details.",
+					"error",
+				);
+				return;
+			}
+			// Drop the cache so the next event — and the shadow check below — reads
+			// the freshly written value.
+			cfg = undefined;
+			const updated = await config(ctx);
+			const label = next === "" ? "default (follow the session model)" : next;
+			if (updated.namingModel !== next) {
+				ctx.ui.notify(
+					`Saved ${label} globally, but a project-level autoRename.namingModel still overrides it.`,
+					"warning",
+				);
+			} else {
+				ctx.ui.notify(`Naming model set to ${label}.`, "info");
+			}
+		},
+	});
 
 	/**
 	 * Guard checks + synchronous preparation, run after config loading confirms

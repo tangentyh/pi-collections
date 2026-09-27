@@ -6,7 +6,7 @@ doing.
 
 This is a **fork** of [`@normful/pi-auto-name`](https://www.npmjs.com/package/@normful/pi-auto-name)
 (v1.1.0) vendored into [`pi-collections`](../../README.md). The upstream sources
-were copied verbatim (with `src/index.ts` renamed to `auto-rename.ts`); three
+were copied verbatim (with `src/index.ts` renamed to `auto-rename.ts`); four
 changes are implemented beyond upstream:
 
 - [`docs/PLAN-subagent-surfaces.md`](docs/PLAN-subagent-surfaces.md) —
@@ -23,11 +23,15 @@ changes are implemented beyond upstream:
   upstream's implicit behavior) or one of `minimal`, `low`, `medium`, `high`,
   `xhigh`, `max`, forwarded as pi-ai's provider-neutral `reasoning` on the
   `*Simple` stream path (see [Configuration](#configuration)).
+- **`/auto-rename model` command**: read or persist `autoRename.namingModel`
+  from the TUI instead of hand-editing `settings.json` (see
+  [Setting the naming model from the TUI](#setting-the-naming-model-from-the-tui)).
+  Upstream registers no slash commands.
 
 Upstream documentation (naming styles, language support, prompt behavior)
 remains the authoritative reference for how names are generated; the
-configuration location and key and the `namingThinking` option are this fork's
-additions.
+configuration location and key, the `namingThinking` option, and the
+`/auto-rename model` command are this fork's additions.
 
 ## What it does
 
@@ -114,6 +118,24 @@ honored only in trusted projects (`ctx.isProjectTrusted()`).
 | `autoRename.surfaces.renameZellijTab` | boolean | `true` | Rename the zellij tab |
 | `autoRename.surfaces.renamePiSessionInNonTuiModes` | boolean | `false` | Allow non-TUI sessions (print/RPC/JSON — e.g. subagent child sessions) to rename **their own** pi session name. Scoped to the session, so safe to enable for subagents. |
 | `autoRename.surfaces.renameMultiplexersInNonTuiModes` | boolean | `false` | Allow non-TUI sessions to rename the process-global tmux window, herdr pane/tab, and zellij pane/tab. A subagent child with this on relabels the parent's pane — leave `false` unless you drive pi through RPC/print inside a multiplexer and want it named. |
+
+### Setting the naming model from the TUI
+
+`/auto-rename model` reads or writes `autoRename.namingModel` without editing
+`settings.json` by hand:
+
+```
+/auto-rename model                              # show configured + effective model
+/auto-rename model openrouter/anthropic/claude  # persist this override globally
+/auto-rename model default                      # clear it (follow the session model)
+```
+
+Model ids are completed from the models available in the current session. A
+value is validated against the model registry before anything is written; an
+unknown model changes nothing. The write goes to the **global** settings file
+and preserves every other setting, so a project-level
+`autoRename.namingModel` keeps shadowing it — the command warns when that
+happens. The change takes effect on the next rename, no `/reload` needed.
 
 ### Legacy config files
 
