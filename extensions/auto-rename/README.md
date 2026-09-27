@@ -6,8 +6,8 @@ doing.
 
 This is a **fork** of [`@normful/pi-auto-name`](https://www.npmjs.com/package/@normful/pi-auto-name)
 (v1.1.0) vendored into [`pi-collections`](../../README.md). The upstream sources
-were copied verbatim (with `src/index.ts` renamed to `auto-rename.ts`); two
-behavioral changes are implemented:
+were copied verbatim (with `src/index.ts` renamed to `auto-rename.ts`); three
+changes are implemented beyond upstream:
 
 - [`docs/PLAN-subagent-surfaces.md`](docs/PLAN-subagent-surfaces.md) —
   **implemented**: subagent/child sessions no longer rename the process-global
@@ -18,10 +18,16 @@ behavioral changes are implemented:
   `.pi/settings.json` (project, trusted projects only). The pre-fork
   `~/.config/pi-auto-name/config.json` and `.pi/pi-auto-name.json` files are
   **not** read.
+- **Configurable naming thinking effort**: `autoRename.namingThinking` selects
+  the thinking/reasoning effort for the naming call — `"off"` (default;
+  upstream's implicit behavior) or one of `minimal`, `low`, `medium`, `high`,
+  `xhigh`, `max`, forwarded as pi-ai's provider-neutral `reasoning` on the
+  `*Simple` stream path (see [Configuration](#configuration)).
 
 Upstream documentation (naming styles, language support, prompt behavior)
 remains the authoritative reference for how names are generated; the
-configuration location and key are this fork's.
+configuration location and key and the `namingThinking` option are this fork's
+additions.
 
 ## What it does
 
@@ -89,6 +95,7 @@ honored only in trusted projects (`ctx.isProjectTrusted()`).
 | --- | --- | --- | --- |
 | `autoRename.enabled` | boolean | `true` | Master switch |
 | `autoRename.namingModel` | string | `""` | `provider/modelId` override for the naming call; empty = the session's current model |
+| `autoRename.namingThinking` | `"off" \| "minimal" \| "low" \| "medium" \| "high" \| "xhigh" \| "max"` | `"off"` | Thinking/reasoning effort for the naming call. `"off"` sends no explicit level and leaves effort at the provider/model default (usually off, though some OpenAI reasoning models still reason at their own default); any level is forwarded as pi-ai's provider-neutral `reasoning` on the `*Simple` stream path |
 | `autoRename.namingStyle` | `"natural" \| "slug" \| "topic-project"` | `"natural"` | Name style |
 | `autoRename.namingContextDepth` | `"first-user-message" \| "recent-user-messages" \| "full-conversation"` | `"recent-user-messages"` | How much conversation is sent to the naming model |
 | `autoRename.initialRenameTrigger` | `"first-input" \| "first-agent-settled"` | `"first-input"` | When the first rename fires |

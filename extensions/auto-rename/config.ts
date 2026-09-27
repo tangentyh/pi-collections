@@ -53,6 +53,23 @@ export const ConfigSchema = Type.Object({
 	),
 	skipSessionNameDedup: Type.Boolean({ default: false }),
 	namingModel: Type.String({ default: "" }),
+	// Thinking/reasoning effort for the naming call. "off" sends no explicit
+	// level, leaving effort at the provider/model default (usually off; some
+	// OpenAI reasoning models still reason at their own default). Any other
+	// value is forwarded as pi-ai's provider-neutral `reasoning` on the
+	// `*Simple` stream path.
+	namingThinking: Type.Union(
+		[
+			Type.Literal("off"),
+			Type.Literal("minimal"),
+			Type.Literal("low"),
+			Type.Literal("medium"),
+			Type.Literal("high"),
+			Type.Literal("xhigh"),
+			Type.Literal("max"),
+		],
+		{ default: "off" },
+	),
 	// BCP-47 language tag only ("en", "zh-CN", "pt-BR")
 	language: Type.String({ default: "en" }),
 	// Per-name limits, override semantics: when set, windowNameMaxLength applies
@@ -133,6 +150,7 @@ export function loadConfig(
 		projectSettingsPath: resolved.projectSettingsPath,
 		enabled: cfg.enabled,
 		namingStyle: cfg.namingStyle,
+		namingThinking: cfg.namingThinking,
 		initialRenameTrigger: cfg.initialRenameTrigger,
 		reRenameEveryNTurns: cfg.reRenameEveryNTurns,
 		replaceExistingName: cfg.replaceExistingName,
