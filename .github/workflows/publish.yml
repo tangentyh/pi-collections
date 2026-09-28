@@ -2,7 +2,7 @@ name: Publish
 
 on:
   push:
-    tags: ["pi-*@*"]
+    tags: ["pi-*@*", "@*/pi-*@*"]
 
 permissions:
   contents: read
@@ -51,7 +51,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           tag="${GITHUB_REF_NAME}"
-          version="${tag#*@}"
+          version="${tag##*@}"
           dir="${{ steps.pkg.outputs.dir }}"
           # Preferred notes: the version's section from the extension's
           # Keep a Changelog CHANGELOG.md

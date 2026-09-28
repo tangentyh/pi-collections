@@ -124,7 +124,8 @@ Gotchas:
 
 - `npm ci` requires `package-lock.json` to be in sync; run `npm install` at the
   root after any dependency/version change and commit the lockfile.
-- `protect-release-tags` blocks updating or deleting `pi-*@*` tags: a tag on
+- `protect-release-tags` blocks updating or deleting release tags — both
+  unscoped `pi-*@*` and scoped `@*/pi-*@*` names: a tag on
   the wrong commit can only be superseded by a new version, not moved.
 - One-time setup per new package: configure its Trusted Publisher on npmjs.com
   (GitHub Actions → `tangentyh` / `pi-collections` / `publish.yml`).
