@@ -18,6 +18,12 @@ export const ConfigSchema = Type.Object({
 		renameTmuxWindow: Type.Boolean({ default: true }),
 		renameZellijPane: Type.Boolean({ default: true }),
 		renameZellijTab: Type.Boolean({ default: true }),
+		// Two independent mode gates for non-TUI sessions (subagent children run in
+		// "print"): the per-session pi name is safe to grant, the process-global
+		// terminal surfaces are not — a child writing those relabels the parent's
+		// tmux/herdr/zellij pane. Both default off.
+		renamePiSessionInNonTuiModes: Type.Boolean({ default: false }),
+		renameMultiplexersInNonTuiModes: Type.Boolean({ default: false }),
 	}),
 	initialRenameTrigger: Type.Union(
 		[Type.Literal("first-input"), Type.Literal("first-agent-settled")],

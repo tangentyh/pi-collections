@@ -48,6 +48,10 @@ interface PreparedRename {
 	cwd: string;
 	sessionFile: string | undefined;
 	session: NamingSession;
+	/** May write the per-session pi name (mode gate AND `renamePiSession`). */
+	renameSession: boolean;
+	/** May write the process-global terminal surfaces (mode gate). */
+	renameSurfaces: boolean;
 }
 
 /**
@@ -58,6 +62,40 @@ interface PreparedRename {
 interface RenameOptions {
 	timeoutMs?: number;
 	currentInput?: string;
+}
+
+/** Optional test seam: overrides config loading (production uses ./config.js). */
+export interface AutoRenameDeps {
+	loadConfig?: (cwd: string) => Config | Promise<Config>;
+}
+
+/**
+ * Whether this session may write the process-global terminal surfaces (tmux
+ * window, herdr/zellij pane/tab). Subagent child sessions are bound with the
+ * default mode "print" (pi-subagents never passes `mode`), while the
+ * interactive session is "tui"; the mode signal is the only child-session
+ * marker pi exposes to extensions. Kept separate from `ownsPiSessionName`: the
+ * pi name is per-session (a child naming itself is harmless), while these
+ * surfaces are process-global (a child writing them relabels the parent's
+ * pane). `surfaces.renameMultiplexersInNonTuiModes` is the escape hatch for
+ * users who drive pi through RPC/print inside a multiplexer and want it named.
+ */
+export function ownsTerminalSurfaces(
+	ctx: ExtensionContext,
+	cfg: Config,
+): boolean {
+	return cfg.surfaces.renameMultiplexersInNonTuiModes || ctx.mode === "tui";
+}
+
+/**
+ * Whether this session may write its own pi session name. Same mode signal as
+ * `ownsTerminalSurfaces` but a separate gate, because the name is scoped to the
+ * session: a subagent child can name itself without touching the parent, so
+ * `surfaces.renamePiSessionInNonTuiModes` can be enabled on its own while the
+ * process-global surfaces stay off.
+ */
+export function ownsPiSessionName(ctx: ExtensionContext, cfg: Config): boolean {
+	return cfg.surfaces.renamePiSessionInNonTuiModes || ctx.mode === "tui";
 }
 
 /**
@@ -77,7 +115,7 @@ function namingSignal(
 	return ctxSignal;
 }
 
-export default function (pi: ExtensionAPI): void {
+export default function (pi: ExtensionAPI, deps?: AutoRenameDeps): void {
 	// NB: no action calls (appendEntry / registerEntryRenderer / ...) here — during
 	// extension loading the runtime actions are throwing stubs. initDebug only
 	// stores pi; the first gated debug() call (from an event handler) registers
@@ -103,8 +141,13 @@ export default function (pi: ExtensionAPI): void {
 	 */
 	async function config(cwd: string): Promise<Config> {
 		if (!cfg) {
-			const { loadConfig } = await import("./config.js");
-			cfg = loadConfig(cwd);
+			const load =
+				deps?.loadConfig ??
+				(async (cwd: string) => {
+					const { loadConfig } = await import("./config.js");
+					return loadConfig(cwd);
+				});
+			cfg = await load(cwd);
 		}
 		return cfg;
 	}
@@ -143,8 +186,25 @@ export default function (pi: ExtensionAPI): void {
 			return undefined;
 		}
 
+		// The two mode gates are independent. `renameSession` also folds in the
+		// user-facing `renamePiSession` switch, so a session with nothing to write
+		// (a subagent child under the defaults) bails before the naming LLM call.
+		const renameSession =
+			c.surfaces.renamePiSession && ownsPiSessionName(ctx, c);
+		const renameSurfaces = ownsTerminalSurfaces(ctx, c);
+		if (!renameSession && !renameSurfaces) {
+			debug(
+				"renameOnce: skip (session owns neither its name nor the terminal surfaces)",
+				{ mode: ctx.mode },
+			);
+			return undefined;
+		}
+
 		const currentName = pi.getSessionName();
-		if (!canReplace(currentName, c.replaceExistingName)) {
+		// The replaceability policy governs the session name only: a surfaces-only
+		// run still proceeds, since `session_start` derives its window name from
+		// the current name and the run stays bounded by `done`.
+		if (renameSession && !canReplace(currentName, c.replaceExistingName)) {
 			debug("renameOnce: name not replaceable — latching done", {
 				currentName,
 				policy: c.replaceExistingName,
@@ -183,6 +243,8 @@ export default function (pi: ExtensionAPI): void {
 			context,
 			cwd: ctx.cwd,
 			sessionFile: ctx.sessionManager.getSessionFile(),
+			renameSession,
+			renameSurfaces,
 			session: {
 				modelRegistry: ctx.modelRegistry,
 				model: ctx.model,
@@ -261,46 +323,53 @@ export default function (pi: ExtensionAPI): void {
 			return;
 		}
 
-		// Step 3: apply the session name (race-guarded).
-		try {
-			if (
-				p.state.autoRenameLocked ||
-				pi.getSessionName() !== p.state.nameAtGenerationStart
-			) {
-				debug(
-					"renameOnce: race guard abort — session name changed during generation",
-					{
-						nameAtGenerationStart: p.state.nameAtGenerationStart,
-						current: pi.getSessionName(),
-					},
+		// Step 3: apply the session name (race-guarded). Skipped when this session
+		// may not write its own name (non-TUI with the session gate off) — the
+		// surfaces below may still be granted independently.
+		if (p.renameSession) {
+			try {
+				if (
+					p.state.autoRenameLocked ||
+					pi.getSessionName() !== p.state.nameAtGenerationStart
+				) {
+					debug(
+						"renameOnce: race guard abort — session name changed during generation",
+						{
+							nameAtGenerationStart: p.state.nameAtGenerationStart,
+							current: pi.getSessionName(),
+						},
+					);
+					return;
+				}
+				debug("renameOnce: applying names", {
+					previous: currentName,
+					next: result.names.sessionName,
+					changed: currentName !== result.names.sessionName,
+					windowName: result.names.windowName,
+				});
+				await applySessionName(
+					pi,
+					p.state,
+					c,
+					result.names.sessionName,
+					result.names.windowName,
 				);
-				return;
+			} catch (error) {
+				debug("renameOnce: applySessionName failed", String(error));
+				throw error;
 			}
-			debug("renameOnce: applying names", {
-				previous: currentName,
-				next: result.names.sessionName,
-				changed: currentName !== result.names.sessionName,
-				windowName: result.names.windowName,
-			});
-			await applySessionName(
-				pi,
-				p.state,
-				c,
-				result.names.sessionName,
-				result.names.windowName,
-			);
-		} catch (error) {
-			debug("renameOnce: applySessionName failed", String(error));
-			throw error;
+			if (p.generation.aborted) return;
 		}
-		if (p.generation.aborted) return;
 
-		// Step 4: sync surfaces to the generated window name.
-		try {
-			await syncSurfaces(pi, c, result.names.windowName);
-		} catch (error) {
-			debug("renameOnce: syncSurfaces failed", String(error));
-			throw error;
+		// Step 4: sync surfaces to the generated window name. Skipped when this
+		// session may not write the process-global terminal surfaces.
+		if (p.renameSurfaces) {
+			try {
+				await syncSurfaces(pi, c, result.names.windowName);
+			} catch (error) {
+				debug("renameOnce: syncSurfaces failed", String(error));
+				throw error;
+			}
 		}
 	}
 
@@ -397,9 +466,15 @@ export default function (pi: ExtensionAPI): void {
 			);
 			state.done = true;
 		}
-		debug("session_start: syncing surfaces", { currentName });
 		logSurfacesEnv();
-		await syncSurfaces(pi, c, windowNameForSync(state, currentName));
+		if (ownsTerminalSurfaces(ctx, c)) {
+			debug("session_start: syncing surfaces", { currentName });
+			await syncSurfaces(pi, c, windowNameForSync(state, currentName));
+		} else {
+			debug("session_start: surfaces not synced (session does not own them)", {
+				mode: ctx.mode,
+			});
+		}
 	});
 
 	pi.on("input", async (event, ctx) => {
@@ -532,7 +607,7 @@ export default function (pi: ExtensionAPI): void {
 		handleSessionInfoChanged(state, event.name, c.respectExternalRenames);
 		// Echoes of our own rename already synced surfaces inside renameOnce;
 		// only external renames (user /name, RPC, other extensions) re-sync here.
-		if (!isEcho)
+		if (!isEcho && ownsTerminalSurfaces(ctx, c))
 			await syncSurfaces(pi, c, windowNameForSync(state, event.name));
 	});
 

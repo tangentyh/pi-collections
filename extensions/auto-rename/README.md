@@ -6,18 +6,19 @@ doing.
 
 This is a **fork** of [`@normful/pi-auto-name`](https://www.npmjs.com/package/@normful/pi-auto-name)
 (v1.1.0) vendored into [`pi-collections`](../../README.md). The upstream sources
-were copied verbatim (with `src/index.ts` renamed to `auto-rename.ts`); two
-behavioral changes are planned but **not yet implemented**:
+were copied verbatim (with `src/index.ts` renamed to `auto-rename.ts`); one
+behavioral change is implemented and one is still planned:
 
-- [`docs/PLAN-subagent-surfaces.md`](docs/PLAN-subagent-surfaces.md) — stop
-  subagent/child sessions from renaming the process-global terminal surfaces
-  owned by the main session.
-- [`docs/PLAN-config-location.md`](docs/PLAN-config-location.md) — move
-  configuration from `~/.config/pi-auto-name/config.json` to pi's own settings
-  files.
+- [`docs/PLAN-subagent-surfaces.md`](docs/PLAN-subagent-surfaces.md) —
+  **implemented**: subagent/child sessions no longer rename the process-global
+  terminal surfaces owned by the main session (see [Subagents](#subagents)).
+- [`docs/PLAN-config-location.md`](docs/PLAN-config-location.md) — still
+  **planned**: move configuration from `~/.config/pi-auto-name/config.json` to
+  pi's own settings files.
 
-Upstream documentation (config reference, naming styles, language support) is
-the authoritative behavioral reference until the plans land.
+Upstream documentation (config reference, naming styles, language support)
+remains the authoritative reference for everything the config plan has not
+changed yet.
 
 ## What it does
 
@@ -32,7 +33,31 @@ and a shorter **window name** — then applies them:
 A `session_start` sync also applies a window name derived from an existing
 deliberate session name, so resuming a named session re-labels its surfaces.
 
-## Configuration (current — inherited from upstream)
+## Subagents
+
+Subagent child sessions run in `"print"` mode; by default only the session
+attached to the terminal (`mode === "tui"`) writes to any surface. Two
+**independent** gates let a non-TUI session opt in per axis:
+
+- `surfaces.renamePiSessionInNonTuiModes` — allow a non-TUI session to set its
+**own** pi session name. Safe for subagents: the name is scoped to the session,
+so a child can name itself without touching the parent.
+- `surfaces.renameMultiplexersInNonTuiModes` — allow a non-TUI session to write
+the process-global tmux window, herdr pane/tab, and zellij pane/tab names. This
+is the deliberate RPC/print-inside-a-multiplexer case; the surfaces are shared
+with the parent process, so a child with this on **will** relabel the parent's
+pane. Leave it `false` unless you accept that.
+
+Both default to `false`, so a subagent child under the defaults neither names
+itself nor touches any surface. Enabling only the session-name gate is the safe
+way to give subagent children meaningful names. The `"print"`-mode label is a
+heuristic — pi exposes no parent/child marker to extensions — so the multiplexer
+gate cannot distinguish a subagent child from a top-level headless run.
+
+This is the fork's fix for the upstream behavior described in
+[`docs/PLAN-subagent-surfaces.md`](docs/PLAN-subagent-surfaces.md).
+
+## Configuration
 
 Config is read from two JSON files that are deep-merged (project wins per field):
 
@@ -59,6 +84,8 @@ Config is read from two JSON files that are deep-merged (project wins per field)
 | `surfaces.renameTmuxWindow` | boolean | `true` | Rename the tmux window |
 | `surfaces.renameZellijPane` | boolean | `true` | Rename the zellij pane |
 | `surfaces.renameZellijTab` | boolean | `true` | Rename the zellij tab |
+| `surfaces.renamePiSessionInNonTuiModes` | boolean | `false` | Allow non-TUI sessions (print/RPC/JSON — e.g. subagent child sessions) to rename **their own** pi session name. Scoped to the session, so safe to enable for subagents. |
+| `surfaces.renameMultiplexersInNonTuiModes` | boolean | `false` | Allow non-TUI sessions to rename the process-global tmux window, herdr pane/tab, and zellij pane/tab. A subagent child with this on relabels the parent's pane — leave `false` unless you drive pi through RPC/print inside a multiplexer and want it named. |
 
 Set `PI_AUTO_NAME_DEBUG=1` to append a structured debug trail to the session
 transcript.

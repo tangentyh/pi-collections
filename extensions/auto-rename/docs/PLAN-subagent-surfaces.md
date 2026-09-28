@@ -1,6 +1,7 @@
 # Plan: stop subagent sessions from renaming the main session's surfaces
 
-- **Status:** proposed, not implemented
+- **Status:** implemented (config key + gate + tests in `tests/test.ts`); CHANGELOG/
+  version bump deliberately left for the release flow
 - **Scope:** `@tangentyh/pi-auto-rename` (fork of `@normful/pi-auto-name` 1.1.0)
 - **Related:** [`PLAN-config-location.md`](PLAN-config-location.md) (both plans touch
   `config.ts`; land them together or sequence config first)
@@ -62,9 +63,14 @@ Gate every process-global surface write on a single per-session predicate:
 ```ts
 /** The session that owns the terminal the process is attached to. */
 function ownsTerminalSurfaces(ctx: ExtensionContext, cfg: Config): boolean {
-	return cfg.renameOutsideTui || ctx.mode === "tui";
+	return cfg.surfaces.renameMultiplexersInNonTuiModes || ctx.mode === "tui";
 }
 ```
+
+> **Update (implemented):** a later revision split the single proposed
+> `renameInNonTuiModes` flag along the per-session / process-global axis, so the
+> mode gate has a session-name sibling (`ownsPiSessionName`) as well. See the
+> config knob below.
 
 `ctx.mode` is the supported `ExtensionMode` (`"tui" | "rpc" | "json" | "print"`,
 `types.d.ts:206`). Subagent sessions default to `"print"`:
@@ -91,15 +97,24 @@ the only `syncSurfaces` callers outside `completeRename`.
 
 ### Config knob
 
-Add one boolean under `surfaces`:
+Add two independent booleans under `surfaces` (the originally proposed single
+`renameInNonTuiModes` was split once implemented, because the two surfaces have
+different blast radii):
 
-- `surfaces.renameInNonTuiModes` — default `false`.
+- `surfaces.renamePiSessionInNonTuiModes` — default `false`.
+  `false` (default): only `mode === "tui"` sessions set their own pi session
+  name. `true`: a child may name itself; the name is session-scoped, so it
+  never touches the parent.
+- `surfaces.renameMultiplexersInNonTuiModes` — default `false`.
   `false` (default): only `mode === "tui"` sessions touch tmux/herdr/zellij.
-  `true`: restores the current behavior (any mode may rename surfaces) for users
-  who drive pi through RPC/print inside a multiplexer and want it named.
+  `true`: restores the pre-fork behavior for users who drive pi through
+  RPC/print inside a multiplexer and want it named — a subagent child with this
+  on still relabels the parent's surfaces, since no child marker exists.
 
-Keep `surfaces.renamePiSession` orthogonal: it already controls the per-session
-name and does not need the terminal gate.
+`surfaces.renamePiSession` remains the orthogonal master switch for the
+per-session name: the effective permission is `renamePiSession &&
+renamePiSessionInNonTuiModes`. `surfaces.renameInNonTuiModes` from the original
+plan no longer exists.
 
 ## Alternatives considered
 
@@ -112,23 +127,28 @@ name and does not need the terminal gate.
 
 ## Implementation steps
 
-1. Add `renameInNonTuiModes: Type.Boolean({ default: false })` to
-   `ConfigSchema.surfaces` in `config.ts` (this is the file `PLAN-config-location.md`
-   also edits — coordinate the merge).
-2. Add the `ownsTerminalSurfaces(ctx, cfg)` helper in `auto-rename.ts`.
-3. `prepareRename`: after the `!c.enabled` check, return `undefined` when
-   `!ownsTerminalSurfaces(ctx, c)` (debug-log the skip with the mode).
+1. Add `renamePiSessionInNonTuiModes` and `renameMultiplexersInNonTuiModes`
+   (both `Type.Boolean({ default: false })`) to `ConfigSchema.surfaces` in
+   `config.ts` (this is the file `PLAN-config-location.md` also edits —
+   coordinate the merge).
+2. Add the `ownsTerminalSurfaces(ctx, cfg)` and `ownsPiSessionName(ctx, cfg)`
+   helpers in `auto-rename.ts`.
+3. `prepareRename`: after the `!c.enabled` check, return `undefined` only when
+   the session may write neither its name nor the surfaces (debug-log the skip
+   with the mode). Gate the session-name write on the name predicate and the
+   surface sync on the surface predicate.
 4. Guard the two `syncSurfaces` call sites (`auto-rename.ts:402`, `:536`) with
-   the same predicate.
+   `ownsTerminalSurfaces`.
 5. Tests (see below).
 6. README config table + a short "Subagents" note; CHANGELOG entry; bump to
    `0.2.0` (or fold into `0.1.0` if the fork has not been published yet).
 
 ## Tests
 
-- **Pure unit test** of `ownsTerminalSurfaces` over the mode matrix
-  (`tui` → true; `rpc`/`json`/`print` → false; `renameInNonTuiModes: true` →
-  true for all).
+- **Pure unit test** of `ownsTerminalSurfaces` and `ownsPiSessionName` over the
+  mode matrix (`tui` → true; `rpc`/`json`/`print` → false;
+  `renameMultiplexersInNonTuiModes: true` / `renamePiSessionInNonTuiModes: true`
+  → true for all), including that the two gates are independent.
 - **Handler test** with a stub `pi` and a fake `ctx` (`mode: "print"`): assert
   `syncSurfaces` never calls `pi.exec("tmux", …)` and `prepareRename` returns
   undefined (so `generateNames` is never invoked).
