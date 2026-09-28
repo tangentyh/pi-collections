@@ -66,7 +66,7 @@ interface RenameOptions {
 
 /** Optional test seam: overrides config loading (production uses ./config.js). */
 export interface AutoRenameDeps {
-	loadConfig?: (cwd: string) => Config | Promise<Config>;
+	loadConfig?: (ctx: ExtensionContext) => Config | Promise<Config>;
 }
 
 /**
@@ -136,18 +136,19 @@ export default function (pi: ExtensionAPI, deps?: AutoRenameDeps): void {
 	let generationController = new AbortController();
 
 	/**
-	 * Delayed initialization: capture cwd before yielding, then load config
-	 * without retaining the event ctx across the dynamic import boundary.
+	 * Delayed initialization: load config from the first event ctx that needs it
+	 * and cache it for the session (`session_start` resets the cache). The ctx is
+	 * not retained past the load.
 	 */
-	async function config(cwd: string): Promise<Config> {
+	async function config(ctx: ExtensionContext): Promise<Config> {
 		if (!cfg) {
 			const load =
 				deps?.loadConfig ??
-				(async (cwd: string) => {
+				(async (ctx: ExtensionContext) => {
 					const { loadConfig } = await import("./config.js");
-					return loadConfig(cwd);
+					return loadConfig(ctx);
 				});
-			cfg = await load(cwd);
+			cfg = await load(ctx);
 		}
 		return cfg;
 	}
@@ -169,7 +170,7 @@ export default function (pi: ExtensionAPI, deps?: AutoRenameDeps): void {
 		options: RenameOptions | undefined,
 	): PreparedRename | undefined {
 		// cfg is read synchronously so this preparation remains before the next
-		// await in every caller. config(cwd) has already populated the cache.
+		// await in every caller. config(ctx) has already populated the cache.
 		const c = cfg as Config;
 		if (!c.enabled || state.done || state.inflight || state.autoRenameLocked) {
 			// A completed initial rename (`done` or `!enabled`) is the expected
@@ -443,9 +444,8 @@ export default function (pi: ExtensionAPI, deps?: AutoRenameDeps): void {
 		const generation = generationController.signal;
 		state = createState();
 		cfg = undefined;
-		const cwd = ctx.cwd;
 		restoreProvenance(ctx, state);
-		const c = await config(cwd);
+		const c = await config(ctx);
 		if (generation.aborted) return;
 		debug("session_start", {
 			reason: event.reason,
@@ -480,8 +480,7 @@ export default function (pi: ExtensionAPI, deps?: AutoRenameDeps): void {
 	pi.on("input", async (event, ctx) => {
 		const generation = generationController.signal;
 		if (generation.aborted) return;
-		const cwd = ctx.cwd;
-		const c = await config(cwd);
+		const c = await config(ctx);
 		if (generation.aborted) return;
 		if (!c.enabled || c.initialRenameTrigger !== "first-input") {
 			debug("input: ignored", {
@@ -532,8 +531,7 @@ export default function (pi: ExtensionAPI, deps?: AutoRenameDeps): void {
 	pi.on("agent_settled", async (_event, ctx) => {
 		const generation = generationController.signal;
 		if (generation.aborted) return;
-		const cwd = ctx.cwd;
-		const c = await config(cwd);
+		const c = await config(ctx);
 		if (generation.aborted) return;
 		if (!c.enabled) return;
 		state.turnsSeen += 1;
@@ -594,8 +592,7 @@ export default function (pi: ExtensionAPI, deps?: AutoRenameDeps): void {
 	pi.on("session_info_changed", async (event, ctx) => {
 		const generation = generationController.signal;
 		if (generation.aborted) return;
-		const cwd = ctx.cwd;
-		const c = await config(cwd);
+		const c = await config(ctx);
 		if (generation.aborted) return;
 		const isEcho = event.name === state.lastAutoName;
 		debug("session_info_changed", {

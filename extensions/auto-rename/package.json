@@ -1,7 +1,7 @@
 {
 	"name": "@tangentyh/pi-auto-rename",
 	"version": "0.1.0",
-	"description": "Auto-generate names for your pi session and the terminal surfaces it runs in (tmux window, herdr pane/tab, zellij pane/tab) so it is easy to see what each pi is doing. Fork of @normful/pi-auto-name with subagent-surface and config-location fixes planned",
+	"description": "Auto-generate names for your pi session and the terminal surfaces it runs in (tmux window, herdr pane/tab, zellij pane/tab) so it is easy to see what each pi is doing. Fork of @normful/pi-auto-name with subagent-surface gating and config moved into pi's settings files.",
 	"keywords": [
 		"pi-package",
 		"pi-extension",
@@ -31,7 +31,6 @@
 		"prepublishOnly": "npm run typecheck"
 	},
 	"dependencies": {
-		"@juicesharp/rpiv-config": "^2.3.1",
 		"typebox": "^1.3.11"
 	},
 	"peerDependencies": {
@@ -53,6 +52,7 @@
 		"debug.ts",
 		"dedup.ts",
 		"i18n.ts",
+		"io.ts",
 		"locales.ts",
 		"naming.ts",
 		"ownership.ts",

@@ -1,13 +1,9 @@
-// config.ts — schema, defaults, load/merge.
-import { join } from "node:path";
-import { CONFIG_DIR_NAME } from "@earendil-works/pi-coding-agent";
-import {
-	configPath,
-	loadJsonConfig,
-	validateConfig as rpivValidateConfig,
-} from "@juicesharp/rpiv-config";
+// config.ts — schema, defaults, and load/merge of the `autoRename` settings key.
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { type Static, type TObject, Type } from "typebox";
+import { Value } from "typebox/value";
 import { debug } from "./debug.js";
+import { type AutoRenamePaths, resolveAutoRenameConfiguration } from "./io.js";
 
 export const ConfigSchema = Type.Object({
 	enabled: Type.Boolean({ default: true }),
@@ -72,21 +68,28 @@ export const ConfigSchema = Type.Object({
 export type Config = Static<typeof ConfigSchema>;
 
 /**
- * rpiv-config's `validateConfig` (verbatim behavior: non-object guard,
- * Value.Clean strips unknown keys, Value.Create applies defaults, defaults
- * merged under the cleaned value). The cast papers over an upstream generic
- * bug: typebox 1.x's bare `TObject` defaults `required` to `[string]`, so
- * rpiv-config's `T extends TObject` constraint rejects any object schema with
- * more than one required key. Runtime behavior is unchanged.
+ * Schema validation with rpiv-config's `validateConfig` semantics, inlined
+ * after dropping the dependency: non-object input yields `{}`; Value.Clean
+ * strips unknown keys; Value.Create applies defaults, which are then merged
+ * under (and so overridden by) the cleaned value. Any failure yields `{}`.
  */
 export function validateConfig<T extends TObject>(
 	schema: T,
 	value: unknown,
 ): Static<T> {
-	return rpivValidateConfig(schema as TObject, value) as Static<T>;
+	try {
+		if (value === null || typeof value !== "object" || Array.isArray(value))
+			return {} as Static<T>;
+		const cleaned = Value.Clean(schema, Value.Clone(value));
+		const defaults = Value.Create(schema);
+		return {
+			...(defaults as Record<string, unknown>),
+			...(cleaned as Record<string, unknown>),
+		} as Static<T>;
+	} catch {
+		return {} as Static<T>;
+	}
 }
-
-const USER_CONFIG_PATH = configPath("pi-auto-name"); // ~/.config/pi-auto-name/config.json
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
 	return typeof v === "object" && v !== null && !Array.isArray(v);
@@ -109,26 +112,25 @@ function deepMerge(
 }
 
 /**
- * Load: user-global base ← project override (per-field, project wins).
- * Configuration comes ONLY from the two JSON files read via rpiv-config;
- * there are no env-var overrides.
+ * Load: global settings base ← project override (per-field, project wins).
+ * Configuration comes ONLY from the `autoRename` key of pi's own settings
+ * files; there are no env-var overrides or legacy-file fallbacks.
  */
-export function loadConfig(cwd: string): Config {
-	const userPath = USER_CONFIG_PATH;
-	const projectPath = join(cwd, CONFIG_DIR_NAME, "pi-auto-name.json");
-	const user = loadJsonConfig<Record<string, unknown>>(userPath);
-	const project = loadJsonConfig<Record<string, unknown>>(projectPath);
-	const merged = deepMerge(user, project);
-	const validated = validateConfig(ConfigSchema, merged);
-	// rpiv-config's merge is shallow (`{...defaults, ...cleaned}`) and TypeBox
+export function loadConfig(
+	ctx: ExtensionContext,
+	paths?: AutoRenamePaths,
+): Config {
+	const resolved = resolveAutoRenameConfiguration(ctx, paths);
+	const validated = validateConfig(ConfigSchema, resolved.raw ?? {});
+	// validateConfig's merge is shallow (`{...defaults, ...cleaned}`) and TypeBox
 	// Value.Create honors an object's own default over nested property defaults.
 	// Deep-merge the full schema defaults so a partial `surfaces`
-	// override keeps every untouched field (spec §3.2 intent).
+	// override keeps every untouched field.
 	const fullDefaults = validateConfig(ConfigSchema, {});
 	const cfg = deepMerge(fullDefaults, validated) as Config;
 	debug("loadConfig", {
-		userPath,
-		projectPath,
+		globalSettingsPath: resolved.globalSettingsPath,
+		projectSettingsPath: resolved.projectSettingsPath,
 		enabled: cfg.enabled,
 		namingStyle: cfg.namingStyle,
 		initialRenameTrigger: cfg.initialRenameTrigger,
