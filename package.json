@@ -21,6 +21,7 @@
 		"start:footer-template": "pi -e ./extensions/footer-template/footer-template.ts",
 		"start:deepseek-pricing-by-time": "pi -e ./extensions/deepseek-pricing-by-time/deepseek-pricing-by-time.ts",
 		"start:sticky-last-prompt": "pi -e ./extensions/sticky-last-prompt/sticky-last-prompt.ts",
+		"start:auto-rename": "pi -e ./extensions/auto-rename/auto-rename.ts",
 		"prepare": "husky"
 	},
 	"devDependencies": {
