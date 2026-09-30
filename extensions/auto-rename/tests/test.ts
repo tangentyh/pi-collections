@@ -16,13 +16,21 @@
 
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type {
 	ExtensionAPI,
+	ExtensionCommandContext,
 	ExtensionContext,
+	RegisteredCommand,
 } from "@earendil-works/pi-coding-agent";
 import type { AutoRenameDeps } from "../auto-rename.ts";
 import type { Config } from "../config.ts";
@@ -106,6 +114,10 @@ function makeCfg(overrides: CfgOverrides = {}): Config {
 interface Stub {
 	pi: ExtensionAPI;
 	handlers: Map<string, ((...a: unknown[]) => unknown)[]>;
+	/** Registered slash commands, keyed by name. */
+	commands: Map<string, Omit<RegisteredCommand, "name" | "sourceInfo">>;
+	/** Every `ctx.ui.notify` call, in order. */
+	notifications: { message: string; type?: string }[];
 	calls: { cmd: string; args: string[] }[];
 	sessionName: string | undefined;
 	/** How many times the naming pipeline read `ctx.model`. */
@@ -117,6 +129,8 @@ function makeStub(): Stub {
 	const stub: Stub = {
 		pi: undefined as unknown as ExtensionAPI,
 		handlers: new Map(),
+		commands: new Map(),
+		notifications: [],
 		calls: [],
 		sessionName: undefined,
 		modelReads: 0,
@@ -124,6 +138,12 @@ function makeStub(): Stub {
 	stub.pi = {
 		on: (ev: string, h: (...a: unknown[]) => unknown) => {
 			stub.handlers.set(ev, [...(stub.handlers.get(ev) ?? []), h]);
+		},
+		registerCommand: (
+			name: string,
+			options: Omit<RegisteredCommand, "name" | "sourceInfo">,
+		) => {
+			stub.commands.set(name, options);
 		},
 		getSessionName: () => stub.sessionName,
 		setSessionName: (n: string) => {
@@ -158,11 +178,54 @@ function makeCtx(mode: string, stub: Stub): ExtensionContext {
 		signal: undefined,
 		isIdle: () => true,
 		modelRegistry: undefined,
+		ui: {
+			notify: (message: string, type?: string) => {
+				stub.notifications.push({ message, type });
+			},
+		},
 		get model() {
 			stub.modelReads += 1;
 			return undefined;
 		},
 	} as unknown as ExtensionContext;
+}
+
+/** A minimal fake ModelRegistry: just the `find`/`getAvailable` reads used. */
+function makeRegistry(
+	models: { provider: string; id: string; name?: string }[],
+): ExtensionContext["modelRegistry"] {
+	return {
+		find: (provider: string, modelId: string) =>
+			models.find((m) => m.provider === provider && m.id === modelId),
+		getAvailable: () => models,
+	} as unknown as ExtensionContext["modelRegistry"];
+}
+
+/**
+ * Command-capable ctx: a real model registry plus a notify sink, with the same
+ * tmux/mode surface wiring as makeCtx.
+ */
+function makeCommandCtx(
+	stub: Stub,
+	registry: ExtensionContext["modelRegistry"],
+	model?: { provider: string; id: string },
+): ExtensionCommandContext {
+	const base = makeCtx("tui", stub) as unknown as Record<string, unknown>;
+	return {
+		...base,
+		modelRegistry: registry,
+		model,
+	} as unknown as ExtensionCommandContext;
+}
+
+/** The registered command, failing loudly when absent. */
+function command(
+	stub: Stub,
+	name: string,
+): Omit<RegisteredCommand, "name" | "sourceInfo"> {
+	const cmd = stub.commands.get(name);
+	assert.ok(cmd, `no command registered for ${name}`);
+	return cmd;
 }
 
 /** The registered handler for `event`, failing loudly when absent. */
@@ -598,4 +661,207 @@ async function runTests(mod: Mod): Promise<void> {
 			assert.equal(cfg.enabled, true);
 		},
 	);
+
+	await check(
+		"config location: writeGlobalNamingModel preserves other settings",
+		async () => {
+			const io = (await import(ioUrl)) as typeof import("../io.ts");
+			const paths = settingsPaths("auto-rename-write-");
+			writeJson(paths.globalSettingsPath, {
+				unrelated: 1,
+				autoRename: {
+					namingStyle: "slug",
+					surfaces: { renameTmuxWindow: false },
+				},
+			});
+			assert.equal(
+				io.writeGlobalNamingModel("openrouter/fast", paths.globalSettingsPath),
+				true,
+			);
+			const written = JSON.parse(
+				readFileSync(paths.globalSettingsPath, "utf8"),
+			) as {
+				unrelated: number;
+				autoRename: {
+					namingModel: string;
+					namingStyle: string;
+					surfaces: Record<string, boolean>;
+				};
+			};
+			assert.equal(written.unrelated, 1);
+			assert.equal(written.autoRename.namingModel, "openrouter/fast");
+			assert.equal(written.autoRename.namingStyle, "slug");
+			assert.deepEqual(written.autoRename.surfaces, {
+				renameTmuxWindow: false,
+			});
+
+			// An empty string is the documented "follow the session model" value.
+			assert.equal(
+				io.writeGlobalNamingModel("", paths.globalSettingsPath),
+				true,
+			);
+			assert.equal(
+				(
+					JSON.parse(readFileSync(paths.globalSettingsPath, "utf8")) as {
+						autoRename: { namingModel: string };
+					}
+				).autoRename.namingModel,
+				"",
+			);
+		},
+	);
+
+	// ── 7. /auto-rename model command ───────────────────────────────
+
+	await check("command: /auto-rename offers a `model` subcommand", async () => {
+		const stub = makeStub();
+		factory(stub.pi, { loadConfig: () => makeCfg() });
+		const cmd = command(stub, "auto-rename");
+		assert.equal(typeof cmd.handler, "function", "missing handler");
+		const completions = (await cmd.getArgumentCompletions?.("")) ?? [];
+		assert.ok(
+			completions.some((c) => c.value === "model"),
+			`expected a \`model\` completion, got ${JSON.stringify(completions)}`,
+		);
+	});
+
+	await check(
+		"command: no args reports the configured and effective model",
+		async () => {
+			const stub = makeStub();
+			factory(stub.pi, {
+				loadConfig: () => makeCfg({ namingModel: "openrouter/m" }),
+			});
+			const registry = makeRegistry([
+				{ provider: "openrouter", id: "m", name: "M" },
+			]);
+			const ctx = makeCommandCtx(stub, registry, {
+				provider: "openrouter",
+				id: "m",
+			});
+			await command(stub, "auto-rename").handler("", ctx);
+			assert.equal(stub.notifications.length, 1);
+			assert.equal(stub.notifications[0].type, "info");
+			assert.match(stub.notifications[0].message, /openrouter\/m/);
+		},
+	);
+
+	await check(
+		"command: model set persists the override and applies it",
+		async () => {
+			const stub = makeStub();
+			let stored = "";
+			factory(stub.pi, {
+				loadConfig: () => makeCfg({ namingModel: stored }),
+				writeNamingModel: (m) => {
+					stored = m;
+					return true;
+				},
+			});
+			const registry = makeRegistry([
+				{ provider: "openrouter", id: "fast", name: "Fast" },
+			]);
+			const ctx = makeCommandCtx(stub, registry, {
+				provider: "openrouter",
+				id: "fast",
+			});
+			await command(stub, "auto-rename").handler("model openrouter/fast", ctx);
+			assert.equal(stored, "openrouter/fast");
+			assert.equal(stub.notifications.at(-1)?.type, "info");
+			assert.match(
+				stub.notifications.at(-1)?.message ?? "",
+				/openrouter\/fast/,
+			);
+		},
+	);
+
+	await check(
+		"command: unknown model is rejected without writing",
+		async () => {
+			const stub = makeStub();
+			let writes = 0;
+			factory(stub.pi, {
+				loadConfig: () => makeCfg(),
+				writeNamingModel: () => {
+					writes++;
+					return true;
+				},
+			});
+			const ctx = makeCommandCtx(stub, makeRegistry([]), undefined);
+			await command(stub, "auto-rename").handler("model nope/nope", ctx);
+			assert.equal(writes, 0);
+			assert.equal(stub.notifications.at(-1)?.type, "warning");
+		},
+	);
+
+	await check("command: `default` clears the override", async () => {
+		const stub = makeStub();
+		let stored = "openrouter/fast";
+		factory(stub.pi, {
+			loadConfig: () => makeCfg({ namingModel: stored }),
+			writeNamingModel: (m) => {
+				stored = m;
+				return true;
+			},
+		});
+		const ctx = makeCommandCtx(stub, makeRegistry([]), undefined);
+		await command(stub, "auto-rename").handler("model default", ctx);
+		assert.equal(stored, "");
+		assert.equal(stub.notifications.at(-1)?.type, "info");
+		assert.match(stub.notifications.at(-1)?.message ?? "", /default/);
+	});
+
+	await check(
+		"command: a project-level override still shadowing is reported",
+		async () => {
+			const stub = makeStub();
+			factory(stub.pi, {
+				// Mirrors a project file: the reload never reflects the global write.
+				loadConfig: () => makeCfg({ namingModel: "project/model" }),
+				writeNamingModel: () => true,
+			});
+			const registry = makeRegistry([
+				{ provider: "openrouter", id: "fast", name: "Fast" },
+			]);
+			const ctx = makeCommandCtx(stub, registry, {
+				provider: "openrouter",
+				id: "fast",
+			});
+			await command(stub, "auto-rename").handler("model openrouter/fast", ctx);
+			assert.equal(stub.notifications.at(-1)?.type, "warning");
+			assert.match(stub.notifications.at(-1)?.message ?? "", /project/i);
+		},
+	);
+
+	await check(
+		"command: completions list `default` plus the session's available models",
+		async () => {
+			const stub = makeStub();
+			factory(stub.pi, { loadConfig: () => makeCfg() });
+			const registry = makeRegistry([
+				{ provider: "openrouter", id: "fast", name: "Fast" },
+				{ provider: "anthropic", id: "claude", name: "Claude" },
+			]);
+			// session_start populates the registry handle used by completions.
+			await handler(stub, "session_start")(
+				{ reason: "startup" },
+				makeCommandCtx(stub, registry),
+			);
+			const items =
+				(await command(stub, "auto-rename").getArgumentCompletions?.(
+					"model ",
+				)) ?? [];
+			assert.ok(items.some((i) => i.value === "default"));
+			assert.ok(items.some((i) => i.value === "openrouter/fast"));
+			assert.ok(items.some((i) => i.value === "anthropic/claude"));
+		},
+	);
+
+	await check("command: an unknown subcommand is rejected", async () => {
+		const stub = makeStub();
+		factory(stub.pi, { loadConfig: () => makeCfg() });
+		const ctx = makeCommandCtx(stub, makeRegistry([]), undefined);
+		await command(stub, "auto-rename").handler("thinking high", ctx);
+		assert.equal(stub.notifications.at(-1)?.type, "warning");
+	});
 }

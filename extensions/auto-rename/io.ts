@@ -3,8 +3,8 @@
 // The `autoRename` key of pi's global (`<agent dir>/settings.json`) and project
 // (`<cwd>/.pi/settings.json`, trusted projects only) settings is the only
 // location read; the pre-fork `pi-auto-name` files are no longer consulted.
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import {
 	CONFIG_DIR_NAME,
 	type ExtensionContext,
@@ -91,4 +91,37 @@ export function resolveAutoRenameConfiguration(
 	}
 
 	return { ...result, raw: undefined };
+}
+
+/**
+ * Persist the naming-model override in global settings as
+ * `autoRename.namingModel`, preserving every other setting. The project
+ * settings file is untouched; a project-level `namingModel` still shadows the
+ * global value through the normal merge. `model` is a `provider/modelId`
+ * string, or `""` to fall back to the session's current model.
+ *
+ * Writes atomically (temp file + rename) and returns whether it succeeded, so
+ * the command can report a failure instead of claiming success.
+ */
+export function writeGlobalNamingModel(
+	model: string,
+	globalSettingsPath?: string,
+): boolean {
+	const settingsPath =
+		globalSettingsPath ?? join(getAgentDir(), "settings.json");
+	try {
+		const settings = readSettingsFile(settingsPath) ?? {};
+		const autoRename = settings.autoRename;
+		settings.autoRename = isRecord(autoRename)
+			? { ...autoRename, namingModel: model }
+			: { namingModel: model };
+		mkdirSync(dirname(settingsPath), { recursive: true });
+		const tmp = `${settingsPath}.tmp`;
+		writeFileSync(tmp, JSON.stringify(settings, null, 2), "utf8");
+		renameSync(tmp, settingsPath);
+		return true;
+	} catch (error) {
+		console.error("pi-auto-rename: writeGlobalNamingModel failed", error);
+		return false;
+	}
 }
