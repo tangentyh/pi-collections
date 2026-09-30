@@ -47,8 +47,8 @@ Currently in the collection:
   scrolls the transcript to that message
 - `auto-rename/` → npm `@tangentyh/pi-auto-rename` — fork of `@normful/pi-auto-name`: auto-generates a session name
   and window name from the conversation and applies the window name to the tmux window, herdr pane/tab,
-  and zellij pane/tab the process runs in; two behavioral changes are planned in `docs/`
-  (subagent-surface gating, config moved to pi settings)
+  and zellij pane/tab the process runs in; two behavioral changes from upstream are implemented
+  (subagent-surface gating; config in pi's own settings files) — see `docs/`
 
 Keep this list here in `AGENTS.md` in sync with the table in `README.md` (same order, names, descriptions).
 When adding an extension, add it to both.

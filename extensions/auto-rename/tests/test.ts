@@ -6,15 +6,18 @@
 // the repo (so bare `@earendil-works/*` imports resolve against the workspace
 // node_modules) and imports the emitted JS.
 //
-// Config loading is injected through the `AutoRenameDeps` test seam, so
-// config.ts is never imported at runtime.
+// The handler tests inject config loading through the `AutoRenameDeps` test
+// seam. The config-location tests at the end instead import the emitted
+// `io.js` and `config.js` directly (inside `check`, so a RED-state missing
+// `io.js` is a per-check FAIL rather than a crash of the whole suite).
 //
 // Run: node extensions/auto-rename/tests/test.ts
 //  or: npm test -w @tangentyh/pi-auto-rename
 
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type {
@@ -23,6 +26,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import type { AutoRenameDeps } from "../auto-rename.ts";
 import type { Config } from "../config.ts";
+import type { AutoRenamePaths } from "../io.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "..", "..", "..");
@@ -446,6 +450,150 @@ async function runTests(mod: Mod): Promise<void> {
 				0,
 				`expected no exec calls, got ${JSON.stringify(stub.calls)}`,
 			);
+		},
+	);
+
+	// ── 6. config location: pi settings `autoRename` namespace ──────
+	// Exercises the target `io.ts` / `config.ts` API. In the RED state `io.js`
+	// does not exist yet (and `config.loadConfig` still takes a cwd string), so
+	// every check below is expected to fail.
+
+	const ioUrl = pathToFileURL(join(tmpDir, "io.js")).href;
+	const configUrl = pathToFileURL(join(tmpDir, "config.js")).href;
+
+	function fakeCtx(cwd: string, trusted: boolean): ExtensionContext {
+		return {
+			cwd,
+			isProjectTrusted: () => trusted,
+			hasUI: false,
+		} as unknown as ExtensionContext;
+	}
+
+	/** Fresh temp dir; both config paths live inside it (never the real agent dir). */
+	function settingsPaths(prefix: string): Required<AutoRenamePaths> {
+		const dir = mkdtempSync(join(tmpdir(), prefix));
+		return {
+			globalSettingsPath: join(dir, "settings.json"),
+			projectSettingsPath: join(dir, "project-settings.json"),
+		};
+	}
+
+	function writeJson(file: string, value: unknown): void {
+		writeFileSync(file, JSON.stringify(value));
+	}
+
+	await check(
+		"config location: only the autoRename namespace is read",
+		async () => {
+			const io = (await import(ioUrl)) as typeof import("../io.ts");
+			const paths = settingsPaths("auto-rename-ns-");
+			writeJson(paths.globalSettingsPath, {
+				unrelated: 1,
+				autoRename: { namingStyle: "slug" },
+			});
+			const resolved = io.resolveAutoRenameConfiguration(
+				fakeCtx(tmpdir(), true),
+				paths,
+			);
+			assert.deepEqual(resolved.raw, { namingStyle: "slug" });
+		},
+	);
+
+	await check(
+		"config location: global autoRename merges project over global",
+		async () => {
+			const io = (await import(ioUrl)) as typeof import("../io.ts");
+			const paths = settingsPaths("auto-rename-merge-");
+			writeJson(paths.globalSettingsPath, {
+				autoRename: {
+					namingStyle: "slug",
+					namingModel: "a",
+					surfaces: { renameTmuxWindow: false, renameHerdrPane: true },
+				},
+			});
+			writeJson(paths.projectSettingsPath, {
+				autoRename: {
+					namingModel: "b",
+					surfaces: { renameHerdrPane: false },
+				},
+			});
+			const resolved = io.resolveAutoRenameConfiguration(
+				fakeCtx(tmpdir(), true),
+				paths,
+			);
+			assert.deepEqual(resolved.raw?.surfaces, {
+				renameTmuxWindow: false,
+				renameHerdrPane: false,
+			});
+			assert.equal(resolved.raw?.namingStyle, "slug");
+			assert.equal(resolved.raw?.namingModel, "b");
+		},
+	);
+
+	await check(
+		"config location: untrusted project autoRename is ignored",
+		async () => {
+			const io = (await import(ioUrl)) as typeof import("../io.ts");
+			const paths = settingsPaths("auto-rename-untrusted-");
+			writeJson(paths.globalSettingsPath, {
+				autoRename: { namingStyle: "natural" },
+			});
+			writeJson(paths.projectSettingsPath, {
+				autoRename: { namingStyle: "slug" },
+			});
+			const resolved = io.resolveAutoRenameConfiguration(
+				fakeCtx(tmpdir(), false),
+				paths,
+			);
+			assert.equal(resolved.raw?.namingStyle, "natural");
+		},
+	);
+
+	await check(
+		"config location: missing settings fall back to schema defaults",
+		async () => {
+			const { loadConfig } = (await import(
+				configUrl
+			)) as typeof import("../config.ts");
+			const paths = settingsPaths("auto-rename-missing-");
+			const cfg = await loadConfig(fakeCtx(tmpdir(), true), paths);
+			assert.equal(cfg.enabled, true);
+			assert.equal(cfg.language, "en");
+			assert.equal(cfg.namingStyle, "natural");
+			assert.equal(cfg.surfaces.renameTmuxWindow, true);
+		},
+	);
+
+	await check(
+		"config location: malformed settings JSON falls back to defaults",
+		async () => {
+			const { loadConfig } = (await import(
+				configUrl
+			)) as typeof import("../config.ts");
+			const paths = settingsPaths("auto-rename-malformed-");
+			writeFileSync(paths.globalSettingsPath, "{ not json");
+			const cfg = await loadConfig(fakeCtx(tmpdir(), true), paths);
+			assert.equal(cfg.enabled, true);
+			assert.equal(cfg.language, "en");
+			assert.equal(cfg.namingStyle, "natural");
+			assert.equal(cfg.surfaces.renameTmuxWindow, true);
+		},
+	);
+
+	await check(
+		"config location: schema defaults fill gaps after a partial override",
+		async () => {
+			const { loadConfig } = (await import(
+				configUrl
+			)) as typeof import("../config.ts");
+			const paths = settingsPaths("auto-rename-partial-");
+			writeJson(paths.globalSettingsPath, {
+				autoRename: { surfaces: { renameTmuxWindow: false } },
+			});
+			const cfg = await loadConfig(fakeCtx(tmpdir(), true), paths);
+			assert.equal(cfg.surfaces.renameTmuxWindow, false);
+			assert.equal(cfg.surfaces.renameHerdrPane, true);
+			assert.equal(cfg.enabled, true);
 		},
 	);
 }

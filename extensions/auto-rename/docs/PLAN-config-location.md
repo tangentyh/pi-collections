@@ -1,6 +1,11 @@
 # Plan: move configuration into pi's own settings files
 
-- **Status:** proposed, not implemented
+- **Status:** implemented (`io.ts` + rewritten `config.ts` + tests in
+  `tests/test.ts`); CHANGELOG/version bump deliberately left for the release
+  flow. The optional `/auto-rename migrate` command is NOT implemented. The
+  legacy-file fallback described under *Backward compatibility* below has since
+  been **removed**, ahead of the sunset in step 4 of that section — only the
+  `autoRename` key of pi's own settings files is read.
 - **Scope:** `@tangentyh/pi-auto-rename` (fork of `@normful/pi-auto-name` 1.1.0)
 - **Authority:** [`docs/extension-config-and-cache.md`](../../../docs/extension-config-and-cache.md)
   (repo-level handoff on config/cache placement). This plan implements its
@@ -76,6 +81,9 @@ Merge semantics must match pi exactly (copy `readSettingsFile` +
 - project file read only when `ctx.isProjectTrusted()`.
 
 ## Backward compatibility
+
+> **Superseded:** the legacy fallback below was removed; the `autoRename` key is
+> now the only configuration source. Kept for history.
 
 Existing users have `~/.config/pi-auto-name/config.json` and/or
 `<cwd>/.pi/pi-auto-name.json`. Plan:
