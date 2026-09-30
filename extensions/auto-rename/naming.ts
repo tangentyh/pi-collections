@@ -6,6 +6,8 @@ import type {
 	Context,
 	Model,
 	ModelsApiStreamOptions,
+	ModelsSimpleStreamOptions,
+	ThinkingLevel,
 } from "@earendil-works/pi-ai";
 import type {
 	ExtensionAPI,
@@ -512,29 +514,87 @@ export function parseGeneratedNames(value: string): {
 /**
  * Single naming LLM call, in order of preference:
  *
- * 1. `ctx.modelRegistry.complete` — pi-mono main exposes it (delegating to
- *    ModelRuntime.complete), routing through pi's runtime: ALL providers
- *    (built-in + custom providers) and pi's credential
- *    store. A fresh `createModels()` cannot see extension-registered providers
- *    — that was the original "Unknown provider" failure.
- * 2. Published pi builds (ModelRegistry without `complete`): stream through
+ * 1. `ctx.modelRegistry.complete` / `completeSimple` — pi-mono main exposes
+ *    them (delegating to ModelRuntime), routing through pi's runtime: ALL
+ *    providers (built-in + custom providers) and pi's credential store. A
+ *    fresh `createModels()` cannot see extension-registered providers — that
+ *    was the original "Unknown provider" failure. When `namingThinking` asks
+ *    for a level, the provider-neutral `completeSimple` is used, because the
+ *    native `complete` ignores `reasoning`.
+ * 2. Published pi builds (ModelRegistry without those methods): stream through
  *    the runtime provider (`getProvider`) with runtime-resolved auth
  *    (`getApiKeyAndHeaders`) injected — same provider catalog and auth pi
- *    itself uses, without a separate credential store.
+ *    itself uses, without a separate credential store. `streamSimple` carries
+ *    the reasoning level; `stream` is used otherwise.
  *
  * Failures surface as `stopReason: "error"` messages (never thrown) per
  * pi-ai's contract; the retry/fallback loop in generateNames handles them.
  */
 // The npm-published @earendil-works/pi-coding-agent types lag pi-mono source
 // (ModelRegistry.complete landed after the 0.83.0 publish), so widen the facade
-// type locally; pi-mono main has it at runtime.
+// type locally; pi-mono main has it at runtime. `completeSimple` is the
+// provider-neutral path that honors `reasoning`; it may be absent on a given
+// published facade, in which case completeOnce falls back to the provider.
 type ModelRegistryWithComplete = ModelRegistry & {
 	complete<TApi extends Api>(
 		model: Model<TApi>,
 		context: Context,
 		options?: ModelsApiStreamOptions<TApi>,
 	): Promise<AssistantMessage>;
+	completeSimple?(
+		model: Model<Api>,
+		context: Context,
+		options?: ModelsSimpleStreamOptions,
+	): Promise<AssistantMessage>;
 };
+
+/**
+ * Provider fallback for pi builds whose ModelRegistry facade lacks the needed
+ * method: resolve the runtime provider + auth (the same catalog and credential
+ * store pi itself uses) and stream directly. `simple` picks the
+ * provider-neutral `streamSimple` (which honors `reasoning`) over native
+ * `stream`. Failures surface as `stopReason: "error"` messages (never thrown)
+ * per pi-ai's contract; the retry/fallback loop in generateNames handles them.
+ */
+async function streamViaProvider(
+	modelRegistry: ModelRegistry,
+	model: Model<Api>,
+	context: Context,
+	options: ModelsSimpleStreamOptions | ModelsApiStreamOptions<Api>,
+	simple: boolean,
+): Promise<AssistantMessage> {
+	const { ModelsError } = await piAi();
+	const provider = modelRegistry.getProvider(model.provider);
+	if (!provider)
+		throw new ModelsError("provider", `Unknown provider: ${model.provider}`);
+	const auth = await modelRegistry.getApiKeyAndHeaders(model);
+	if (!auth.ok) throw new ModelsError("auth", auth.error);
+	const authOptions = {
+		...options,
+		apiKey: auth.apiKey,
+		headers: auth.headers,
+		env: auth.env,
+		// Per-credential baseUrl overlay (e.g. Copilot-style providers resolve it
+		// via auth.json/models.json "$ENV(...)"). ModelRuntime.prepareRequest
+		// applies it on the complete() path; the fallback must forward it too or
+		// the request hits the default host.
+		...("baseUrl" in auth && typeof auth.baseUrl === "string" && auth.baseUrl
+			? { baseUrl: auth.baseUrl }
+			: {}),
+	};
+	const stream = simple
+		? provider.streamSimple(
+				model,
+				context,
+				authOptions as ModelsSimpleStreamOptions,
+			)
+		: provider.stream(
+				model,
+				context,
+				authOptions as ModelsApiStreamOptions<Api>,
+			);
+	return stream.result();
+}
 
 async function completeOnce(
 	modelRegistry: ModelRegistry,
@@ -545,6 +605,7 @@ async function completeOnce(
 		timeoutMs: number;
 		signal?: AbortSignal;
 		maxTokens: number;
+		reasoning?: ThinkingLevel;
 	},
 ): Promise<AssistantMessage> {
 	const context: Context = {
@@ -557,10 +618,7 @@ async function completeOnce(
 			},
 		],
 	};
-	const streamOptions: ModelsApiStreamOptions<Api> & {
-		timeoutMs: number;
-		signal?: AbortSignal;
-	} = {
+	const baseOptions = {
 		maxTokens: options.maxTokens,
 		maxRetries: 0,
 		cacheRetention: "none" as const,
@@ -569,30 +627,31 @@ async function completeOnce(
 	};
 
 	const registry = modelRegistry as ModelRegistryWithComplete;
-	if (typeof registry.complete === "function") {
-		return registry.complete(model, context, streamOptions);
+	// A configured thinking level is only honored on pi-ai's provider-neutral
+	// `*Simple` path; the native `complete`/`stream` path ignores `reasoning`
+	// and would leave effort at the provider default.
+	if (options.reasoning) {
+		const simpleOptions: ModelsSimpleStreamOptions = {
+			...baseOptions,
+			reasoning: options.reasoning,
+		};
+		if (typeof registry.completeSimple === "function") {
+			return registry.completeSimple(model, context, simpleOptions);
+		}
+		return streamViaProvider(
+			modelRegistry,
+			model,
+			context,
+			simpleOptions,
+			true,
+		);
 	}
 
-	const { ModelsError } = await piAi();
-	const provider = modelRegistry.getProvider(model.provider);
-	if (!provider)
-		throw new ModelsError("provider", `Unknown provider: ${model.provider}`);
-	const auth = await modelRegistry.getApiKeyAndHeaders(model);
-	if (!auth.ok) throw new ModelsError("auth", auth.error);
-	const stream = provider.stream(model, context, {
-		...streamOptions,
-		apiKey: auth.apiKey,
-		headers: auth.headers,
-		env: auth.env,
-		// Per-credential baseUrl overlay (e.g. Copilot-style providers resolve it
-		// via auth.json/models.json "$ENV(...)"). ModelRuntime.prepareRequest
-		// applies it on the complete() path; the fallback must forward it too or
-		// the request hits the default host.
-		...("baseUrl" in auth && typeof auth.baseUrl === "string" && auth.baseUrl
-			? { baseUrl: auth.baseUrl }
-			: {}),
-	});
-	return stream.result();
+	const nativeOptions: ModelsApiStreamOptions<Api> = baseOptions;
+	if (typeof registry.complete === "function") {
+		return registry.complete(model, context, nativeOptions);
+	}
+	return streamViaProvider(modelRegistry, model, context, nativeOptions, false);
 }
 
 /** The outcome of one generateNames attempt, so the retry loop stays small. */
@@ -699,6 +758,8 @@ async function attemptOnce(
 				timeoutMs: options.timeoutMs ?? 30_000,
 				signal: session.signal,
 				maxTokens,
+				reasoning:
+					cfg.namingThinking === "off" ? undefined : cfg.namingThinking,
 			},
 		);
 	} catch (error) {

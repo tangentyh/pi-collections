@@ -93,6 +93,7 @@ function makeCfg(overrides: CfgOverrides = {}): Config {
 		// Keeps the handler tests hermetic: no sibling-session scan.
 		skipSessionNameDedup: true,
 		namingModel: "",
+		namingThinking: "off",
 		language: "en",
 	};
 	return {
@@ -560,6 +561,7 @@ async function runTests(mod: Mod): Promise<void> {
 			assert.equal(cfg.enabled, true);
 			assert.equal(cfg.language, "en");
 			assert.equal(cfg.namingStyle, "natural");
+			assert.equal(cfg.namingThinking, "off");
 			assert.equal(cfg.surfaces.renameTmuxWindow, true);
 		},
 	);
