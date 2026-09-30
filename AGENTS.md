@@ -84,6 +84,12 @@ running pi with `/reload`.
 > pi's git sources clone a whole repository and install what its root
 > `package.json` declares, so there is no `git:.../extensions/<name>` form.
 
+### Git worktrees
+
+A fresh worktree has no `node_modules` — run `npm ci` in it. Never symlink it to
+main's: the relative workspace links (`node_modules/pi-scroll-speed -> ../extensions/scroll-speed`)
+would resolve back to main's `extensions/`, silently ignoring the worktree's source.
+
 ## Adding a new extension
 
 Follow the layout and naming conventions above; concretely:
