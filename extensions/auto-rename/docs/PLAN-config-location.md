@@ -63,8 +63,9 @@ Read the `autoRename` key from pi's settings files, exactly mirroring
 ```
 
 The whole existing `Config` shape moves under the `autoRename` object unchanged
-— no per-field renames. `surfaces.renameInNonTuiModes` from the sibling plan is
-added inside the same object.
+— no per-field renames. `surfaces.renamePiSessionInNonTuiModes` and
+`surfaces.renameMultiplexersInNonTuiModes` from the sibling plan are added
+inside the same object.
 
 Merge semantics must match pi exactly (copy `readSettingsFile` +
 `mergeSettings` from `extensions/footer-template/io.ts`):

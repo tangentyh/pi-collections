@@ -27,7 +27,7 @@
 	},
 	"scripts": {
 		"typecheck": "tsc --noEmit -p ../..",
-		"test": "echo \"no tests\"",
+		"test": "node tests/test.ts",
 		"prepublishOnly": "npm run typecheck"
 	},
 	"dependencies": {
