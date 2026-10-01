@@ -1,6 +1,6 @@
 {
 	"name": "@tangentyh/pi-auto-rename",
-	"version": "0.2.0",
+	"version": "0.2.1",
 	"description": "Auto-generate names for your pi session and the terminal surfaces it runs in (tmux window, herdr pane/tab, zellij pane/tab) so it is easy to see what each pi is doing. Fork of @normful/pi-auto-name with subagent-surface gating and config moved into pi's settings files.",
 	"keywords": [
 		"pi-package",
