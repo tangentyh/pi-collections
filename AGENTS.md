@@ -150,5 +150,12 @@ Gotchas:
 - Every extension ships its own `README.md`, `CHANGELOG.md`, and `LICENSE`
   (MIT). The changelog follows the Keep a Changelog format and starts with
   the initial `[0.1.0]` entry; every release adds an entry for its version.
+- **Plans are scaffolds, not docs.** `extensions/<name>/docs/PLAN-*.md` lives
+  only while the work is pending and is **deleted in the PR that lands it** —
+  not kept with a status header (an implemented plan's target-state and step
+  lists read as live spec and get "restored"). Before deleting, move behavior →
+  README, non-obvious rationale → the code site, decision of record → the
+  release CHANGELOG entry; never link a plan as current behavior.
+  `docs/PRIOR-ART.md` is research about *other* packages — keep it, dated.
 - Root is never published, never given a `pi` manifest.
 - Do not bump version or modify CHANGELOG unless asked.
