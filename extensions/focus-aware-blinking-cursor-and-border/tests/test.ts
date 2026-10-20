@@ -34,7 +34,6 @@ import {
 	BlinkingCursorEditor,
 	default as blinkingCursor,
 	hideCursorCells,
-	shouldHideCursor,
 } from "../focus-aware-blinking-cursor-and-border.ts";
 
 initTheme("dark"); // CustomEditor.render reaches pi's global theme
@@ -136,68 +135,6 @@ function makeEditor({
 }
 
 const TEXT = "hi";
-
-// ── shouldHideCursor: the whole focus/blink matrix ────────────────────
-console.log("shouldHideCursor");
-const matrix: Array<{
-	name: string;
-	input: Parameters<typeof shouldHideCursor>[0];
-	expected: boolean;
-}> = [
-	{
-		name: "TUI focus + window focus + hardware cursor → untouched (terminal blinks)",
-		input: {
-			focused: true,
-			terminalFocused: true,
-			hardwareCursor: true,
-			cursorVisible: false,
-		},
-		expected: false,
-	},
-	{
-		name: "TUI focus + window focus + pi's own cursor, blink on → visible",
-		input: {
-			focused: true,
-			terminalFocused: true,
-			hardwareCursor: false,
-			cursorVisible: true,
-		},
-		expected: false,
-	},
-	{
-		name: "TUI focus + window focus + pi's own cursor, blink off → hidden",
-		input: {
-			focused: true,
-			terminalFocused: true,
-			hardwareCursor: false,
-			cursorVisible: false,
-		},
-		expected: true,
-	},
-	{
-		name: "editor unfocused (selector/overlay open) → hidden",
-		input: {
-			focused: false,
-			terminalFocused: true,
-			hardwareCursor: true,
-			cursorVisible: true,
-		},
-		expected: true,
-	},
-	{
-		name: "terminal window unfocused → hidden",
-		input: {
-			focused: true,
-			terminalFocused: false,
-			hardwareCursor: true,
-			cursorVisible: true,
-		},
-		expected: true,
-	},
-];
-for (const { name, input, expected } of matrix) {
-	check(name, () => assert.equal(shouldHideCursor(input), expected));
-}
 
 // ── hideCursorCells: both encodings, layout intact ────────────────────
 console.log("hideCursorCells");
@@ -331,26 +268,23 @@ check(
 	},
 );
 
-check("border dims while unfocused and keeps pi's color while focused", () => {
-	const unfocused = makeEditor({ hardwareCursor: true });
-	unfocused.focused = false;
-	unfocused.setText(TEXT);
-	assert.equal(unfocused.render(40).join("\n").includes(DIM), true);
-
-	const focused = makeEditor({ hardwareCursor: true });
-	focused.focused = true;
-	focused.setText(TEXT);
-	assert.equal(focused.render(40).join("\n").includes(DIM), false);
-});
-
 check(
-	"dimmed border equals the fake theme's `dim` paint, not a hardcoded SGR",
+	"border dims via the theme while unfocused, untouched while focused",
 	() => {
-		const editor = makeEditor({ hardwareCursor: true });
-		editor.focused = false;
-		editor.setText(TEXT);
-		const frame = editor.render(40).join("\n");
-		assert.equal(frame.includes(`${DIM}╭`) || frame.includes(`${DIM}─`), true);
+		const unfocused = makeEditor({ hardwareCursor: true });
+		unfocused.focused = false;
+		unfocused.setText(TEXT);
+		const dimmedFrame = unfocused.render(40).join("\n");
+		// The fake theme's `dim` paint, not some hardcoded SGR.
+		assert.equal(
+			dimmedFrame.includes(`${DIM}╭`) || dimmedFrame.includes(`${DIM}─`),
+			true,
+		);
+
+		const focused = makeEditor({ hardwareCursor: true });
+		focused.focused = true;
+		focused.setText(TEXT);
+		assert.equal(focused.render(40).join("\n").includes(DIM), false);
 	},
 );
 

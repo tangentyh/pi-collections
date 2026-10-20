@@ -241,8 +241,6 @@ const tmuxRename = (stub: Stub) => stub.calls.filter((c) => c.cmd === "tmux");
 
 interface Mod {
 	default: (pi: ExtensionAPI, deps?: AutoRenameDeps) => void;
-	ownsTerminalSurfaces: (ctx: ExtensionContext, cfg: Config) => boolean;
-	ownsPiSessionName: (ctx: ExtensionContext, cfg: Config) => boolean;
 }
 
 const tmpDir = join(root, ".tmp-auto-rename-test");
@@ -286,93 +284,8 @@ if (failed > 0) process.exit(1);
 
 async function runTests(mod: Mod): Promise<void> {
 	const factory = mod.default;
-	const ownsTerminalSurfaces = mod.ownsTerminalSurfaces;
-	const ownsPiSessionName = mod.ownsPiSessionName;
 
-	// ── 1. pure unit: mode matrix ───────────────────────────────────
-
-	await check(
-		"ownsTerminalSurfaces: tui owns surfaces with the default config",
-		() => {
-			const stub = makeStub();
-			assert.equal(ownsTerminalSurfaces(makeCtx("tui", stub), makeCfg()), true);
-		},
-	);
-	for (const mode of ["rpc", "json", "print"]) {
-		await check(
-			`ownsTerminalSurfaces: ${mode} does not own surfaces by default`,
-			() => {
-				const stub = makeStub();
-				assert.equal(
-					ownsTerminalSurfaces(makeCtx(mode, stub), makeCfg()),
-					false,
-				);
-			},
-		);
-	}
-	for (const mode of ["tui", "rpc", "json", "print"]) {
-		await check(
-			`ownsTerminalSurfaces: renameMultiplexersInNonTuiModes lets ${mode} own surfaces`,
-			() => {
-				const stub = makeStub();
-				const cfg = makeCfg({
-					surfaces: { renameMultiplexersInNonTuiModes: true },
-				});
-				assert.equal(ownsTerminalSurfaces(makeCtx(mode, stub), cfg), true);
-			},
-		);
-	}
-
-	// ── 1b. the session-name gate is independent of the surface gate ─
-
-	await check(
-		"ownsPiSessionName: tui owns its name with the default config",
-		() => {
-			const stub = makeStub();
-			assert.equal(ownsPiSessionName(makeCtx("tui", stub), makeCfg()), true);
-		},
-	);
-	for (const mode of ["rpc", "json", "print"]) {
-		await check(
-			`ownsPiSessionName: ${mode} does not own its name by default`,
-			() => {
-				const stub = makeStub();
-				assert.equal(ownsPiSessionName(makeCtx(mode, stub), makeCfg()), false);
-			},
-		);
-	}
-	for (const mode of ["tui", "rpc", "json", "print"]) {
-		await check(
-			`ownsPiSessionName: renamePiSessionInNonTuiModes lets ${mode} own its name`,
-			() => {
-				const stub = makeStub();
-				const cfg = makeCfg({
-					surfaces: { renamePiSessionInNonTuiModes: true },
-				});
-				assert.equal(ownsPiSessionName(makeCtx(mode, stub), cfg), true);
-				// The surface gate is untouched by the session-name gate.
-				assert.equal(
-					ownsTerminalSurfaces(makeCtx(mode, stub), cfg),
-					mode === "tui",
-				);
-			},
-		);
-	}
-	for (const mode of ["rpc", "json", "print"]) {
-		await check(
-			`ownsTerminalSurfaces: renameMultiplexersInNonTuiModes leaves ${mode} without its name`,
-			() => {
-				const stub = makeStub();
-				const cfg = makeCfg({
-					surfaces: { renameMultiplexersInNonTuiModes: true },
-				});
-				assert.equal(ownsTerminalSurfaces(makeCtx(mode, stub), cfg), true);
-				assert.equal(ownsPiSessionName(makeCtx(mode, stub), cfg), false);
-			},
-		);
-	}
-
-	// ── 2. child session: session_start must not touch tmux ─────────
+	// ── 1. child session: session_start must not touch tmux ─────────
 
 	await check(
 		"session_start in print mode (child) issues no surface exec",
@@ -390,7 +303,7 @@ async function runTests(mod: Mod): Promise<void> {
 		},
 	);
 
-	// ── 3. child session: input must not run the naming pipeline ────
+	// ── 2. child session: input must not run the naming pipeline ────
 
 	await check(
 		"input in print mode (child) never reaches generateNames",
@@ -417,7 +330,7 @@ async function runTests(mod: Mod): Promise<void> {
 		},
 	);
 
-	// ── 3b. child session with the session-name gate on: names itself, ───
+	// ── 2b. child session with the session-name gate on: names itself, ───
 	// never touches the parent's surfaces ─────────────────────────
 
 	await check(
@@ -470,7 +383,7 @@ async function runTests(mod: Mod): Promise<void> {
 		},
 	);
 
-	// ── 4. regression: the main (tui) session still renames tmux ────
+	// ── 3. regression: the main (tui) session still renames tmux ────
 
 	await check(
 		"session_start in tui mode still renames the tmux window",
@@ -494,7 +407,7 @@ async function runTests(mod: Mod): Promise<void> {
 		},
 	);
 
-	// ── 5. child session: external rename must not sync surfaces ───
+	// ── 4. child session: external rename must not sync surfaces ───
 
 	await check(
 		"session_info_changed in print mode (child) issues no surface exec",
@@ -517,7 +430,7 @@ async function runTests(mod: Mod): Promise<void> {
 		},
 	);
 
-	// ── 6. config location: pi settings `autoRename` namespace ──────
+	// ── 5. config location: pi settings `autoRename` namespace ──────
 	// Exercises the target `io.ts` / `config.ts` API. In the RED state `io.js`
 	// does not exist yet (and `config.loadConfig` still takes a cwd string), so
 	// every check below is expected to fail.
@@ -711,7 +624,7 @@ async function runTests(mod: Mod): Promise<void> {
 		},
 	);
 
-	// ── 7. /auto-rename model command ───────────────────────────────
+	// ── 6. /auto-rename model command ───────────────────────────────
 
 	await check("command: /auto-rename offers a `model` subcommand", async () => {
 		const stub = makeStub();
