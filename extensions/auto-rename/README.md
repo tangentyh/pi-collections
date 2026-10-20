@@ -9,13 +9,12 @@ This is a **fork** of [`@normful/pi-auto-name`](https://www.npmjs.com/package/@n
 were copied verbatim (with `src/index.ts` renamed to `auto-rename.ts`); four
 changes are implemented beyond upstream:
 
-- [`docs/PLAN-subagent-surfaces.md`](docs/PLAN-subagent-surfaces.md) —
-  **implemented**: subagent/child sessions no longer rename the process-global
-  terminal surfaces owned by the main session (see [Subagents](#subagents)).
-- [`docs/PLAN-config-location.md`](docs/PLAN-config-location.md) —
-  **implemented**: configuration now lives under the `autoRename` key of pi's
-  own settings files — `~/.pi/agent/settings.json` (global) and
-  `.pi/settings.json` (project, trusted projects only). The pre-fork
+- **Subagent-safe surfaces**: subagent/child sessions no longer rename the
+  process-global terminal surfaces owned by the main session (see
+  [Subagents](#subagents)).
+- **Configuration in pi's own settings files**: config lives under the
+  `autoRename` key of pi's own settings files — `~/.pi/agent/settings.json`
+  (global) and `.pi/settings.json` (project, trusted projects only). The pre-fork
   `~/.config/pi-auto-name/config.json` and `.pi/pi-auto-name.json` files are
   **not** read.
 - **Configurable naming thinking effort**: `autoRename.namingThinking` selects
@@ -67,8 +66,9 @@ way to give subagent children meaningful names. The `"print"`-mode label is a
 heuristic — pi exposes no parent/child marker to extensions — so the multiplexer
 gate cannot distinguish a subagent child from a top-level headless run.
 
-This is the fork's fix for the upstream behavior described in
-[`docs/PLAN-subagent-surfaces.md`](docs/PLAN-subagent-surfaces.md).
+This gating is the fork's fix for upstream's behavior: upstream writes every
+surface from whatever session runs last, so a subagent relabels the parent's
+window and the parent's name is not reliably restored.
 
 ## Configuration
 
