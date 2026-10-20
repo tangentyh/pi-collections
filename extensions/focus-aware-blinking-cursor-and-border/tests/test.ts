@@ -269,6 +269,36 @@ check(
 );
 
 check(
+	"declares itself a working-status editor, so pi embeds the indicator",
+	() => {
+		const editor = makeEditor({ hardwareCursor: true });
+		// pi's own isWorkingStatusEditor() predicate (not exported): all three parts
+		// are required, and the flag cannot be inherited from pi's default editor.
+		assert.equal(editor.embedWorkingStatus, true);
+		assert.equal(typeof editor.setWorkingStatusIndicator, "function");
+
+		editor.focused = true;
+		editor.setText(TEXT);
+		const plainTop = editor.render(40)[0] ?? "";
+
+		editor.setWorkingStatusIndicator({
+			// pi 0.85.x asks for `renderInBorder`; the method is `ln` in the sources
+			// the shipped maps were built from. Provide both so the check does not
+			// pin a single pi release.
+			renderInBorder: () => "WORKING",
+			ln: () => "WORKING",
+			renderSpinnerInBorder: () => "*",
+		} as unknown as Parameters<typeof editor.setWorkingStatusIndicator>[0]);
+		const topWithStatus = editor.render(40)[0] ?? "";
+
+		assert.match(topWithStatus, /WORKING/, "indicator not in the top border");
+		assert.notEqual(topWithStatus, plainTop);
+		// The rest of the rule still comes from the editor's own border color.
+		assert.equal(visibleWidth(topWithStatus), visibleWidth(plainTop));
+	},
+);
+
+check(
 	"border dims via the theme while unfocused, untouched while focused",
 	() => {
 		const unfocused = makeEditor({ hardwareCursor: true });

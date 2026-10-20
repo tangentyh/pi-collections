@@ -217,7 +217,13 @@ export class BlinkingCursorEditor extends CustomEditor {
 		ctx: ExtensionContext,
 		getTerminalFocused: () => boolean,
 	) {
-		super(tui, theme, keybindings, { paddingX: 0 });
+		// `embedWorkingStatus` must be declared here, not inherited: pi's
+		// `isWorkingStatusEditor` check requires it on the editor it talks to, and
+		// `setCustomEditorComponent` copies borderColor/padding/autocomplete onto
+		// an extension editor but never this flag. Without it the streaming
+		// indicator drops out of the top border into pi's status container above
+		// the editor, and loses the thinking-level border tint.
+		super(tui, theme, keybindings, { paddingX: 0, embedWorkingStatus: true });
 		this.dimBorder = (s: string) => ctx.ui.theme.fg("dim", s);
 		this.getTerminalFocused = getTerminalFocused;
 		this.tuiRef = tui;
