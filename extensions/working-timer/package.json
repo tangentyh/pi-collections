@@ -1,0 +1,49 @@
+{
+	"name": "pi-working-timer",
+	"version": "0.1.0",
+	"description": "Live elapsed time appended to pi's working indicator (Working · 1m 04s), with no runtime dependencies",
+	"keywords": [
+		"pi-package",
+		"pi-extension",
+		"tui",
+		"working-indicator",
+		"working",
+		"timer",
+		"elapsed",
+		"turn-time",
+		"duration",
+		"no-dependencies"
+	],
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/tangentyh/pi-collections.git",
+		"directory": "extensions/working-timer"
+	},
+	"homepage": "https://github.com/tangentyh/pi-collections/tree/main/extensions/working-timer",
+	"type": "module",
+	"pi": {
+		"extensions": [
+			"./working-timer.ts"
+		]
+	},
+	"scripts": {
+		"typecheck": "tsc --noEmit -p ../..",
+		"test": "node tests/test.ts",
+		"prepublishOnly": "npm run typecheck"
+	},
+	"peerDependencies": {
+		"@earendil-works/pi-coding-agent": "*"
+	},
+	"devDependencies": {
+		"@earendil-works/pi-coding-agent": "^0.85.1",
+		"@types/node": "^22.0.0",
+		"typescript": "^5.5.0"
+	},
+	"files": [
+		"working-timer.ts",
+		"README.md",
+		"CHANGELOG.md",
+		"LICENSE"
+	]
+}

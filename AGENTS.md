@@ -45,6 +45,9 @@ Currently in the collection:
   completely above the viewport top as a one-line bar at the top of pi's fullscreen TUI (while a prompt
   is still crossing the top edge the bar hides rather than duplicate it); left-clicking the bar
   scrolls the transcript to that message
+- `working-timer/` → npm `pi-working-timer` — live elapsed time appended to pi's working indicator
+  (`Working · 1m 04s`), one clock per agent run from prompt submission to `agent_settled`; zero
+  configuration, zero runtime dependencies (see `docs/PRIOR-ART.md` for the crowded field)
 - `auto-rename/` → npm `@tangentyh/pi-auto-rename` — fork of `@normful/pi-auto-name`: auto-generates a session name
   and window name from the conversation and applies the window name to the tmux window, herdr pane/tab,
   and zellij pane/tab the process runs in; deliberately diverges from upstream — see the package README
