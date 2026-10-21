@@ -31,41 +31,77 @@ jobs:
           tag="${GITHUB_REF_NAME#refs/tags/}"
           dir=""
           for d in extensions/*/; do
-            p=$(node -p "const p=require('./$d/package.json'); p.name+'@'+p.version")
-            if [ "$p" = "$tag" ]; then dir="$d"; break; fi
+            [ -f "$d/package.json" ] || continue # e.g. a docs-only WIP
+            name=$(node -p "require('./$d/package.json').name")
+            version=$(node -p "require('./$d/package.json').version")
+            if [ "$name@$version" = "$tag" ]; then dir="$d"; break; fi
           done
           if [ -z "$dir" ]; then
             echo "::error::No extension matches tag $tag (expected name@version from its package.json)"
             exit 1
           fi
-          echo "dir=$dir" >> "$GITHUB_OUTPUT"
-          echo "Publishing $tag from $dir"
+          {
+            echo "dir=$dir"
+            echo "name=$name"
+            echo "version=$version"
+          } >> "$GITHUB_OUTPUT"
+          echo "Releasing $tag from $dir"
 
-      - run: npm ci
+      # npm trusted publishing cannot create a package that does not exist yet,
+      # so a package's very first version is published by hand and its tag
+      # reaches this workflow with the version already on the registry. The
+      # registry check keeps the job idempotent in that case — and on re-runs
+      # after a partial failure — instead of failing on EPUBLISHCONFLICT.
+      - name: Check whether the version is on npm
+        id: registry
+        env:
+          PKG_NAME: ${{ steps.pkg.outputs.name }}
+          PKG_VERSION: ${{ steps.pkg.outputs.version }}
+        run: |
+          if out="$(npm view "$PKG_NAME@$PKG_VERSION" version 2>&1)"; then
+            echo "::notice::$PKG_NAME@$PKG_VERSION is already on npm — skipping publish"
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          elif [[ "$out" == *E404* ]]; then
+            echo "$PKG_NAME@$PKG_VERSION is not on npm yet — publishing"
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          else
+            # Unreachable registry, auth problem, …: fail loudly rather than guess
+            echo "::error::Could not query npm for $PKG_NAME@$PKG_VERSION"
+            printf '%s\n' "$out"
+            exit 1
+          fi
 
-      - run: npm publish --provenance
+      - if: steps.registry.outputs.exists == 'false'
+        run: npm ci
+
+      - if: steps.registry.outputs.exists == 'false'
+        run: npm publish --provenance
         working-directory: ${{ steps.pkg.outputs.dir }}
 
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          DIR: ${{ steps.pkg.outputs.dir }}
+          VERSION: ${{ steps.pkg.outputs.version }}
         run: |
-          tag="${GITHUB_REF_NAME}"
-          version="${tag##*@}"
-          dir="${{ steps.pkg.outputs.dir }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "::notice::Release $TAG already exists — skipping"
+            exit 0
+          fi
           # Preferred notes: the version's section from the extension's
           # Keep a Changelog CHANGELOG.md
-          notes="$(awk -v ver="$version" '
+          notes="$(awk -v ver="$VERSION" '
             index($0, "## [" ver "]") == 1 { found = 1; next }
             found && /^## / { exit }
             found { print }
-          ' "$dir/CHANGELOG.md" | sed -e '/./,$!d')"
+          ' "$DIR/CHANGELOG.md" | sed -e '/./,$!d')"
           # Fall back to the annotated tag message, then to generated notes
           if [ -z "$notes" ]; then
-            notes="$(git tag -l --format='%(contents)' "$tag")"
+            notes="$(git tag -l --format='%(contents)' "$TAG")"
           fi
           if [ -n "$notes" ]; then
-            gh release create "$tag" --verify-tag --title "$tag" --notes "$notes"
+            gh release create "$TAG" --verify-tag --title "$TAG" --notes "$notes"
           else
-            gh release create "$tag" --verify-tag --title "$tag" --generate-notes
+            gh release create "$TAG" --verify-tag --title "$TAG" --generate-notes
           fi
