@@ -72,6 +72,16 @@ root runs every suite via npm workspaces, `npm test -w <pkg-name>` runs one
 `extensions/<name>/tests/` as erasable-only TypeScript that Node runs
 directly, headlessly against the real installed pi-tui.
 
+A test's expectation comes from outside the code — a vendor table, a spec, the
+bug report it reproduces — pasted as a literal, never recomputed from the
+module's own tables. **A test is red for a reason other than the code you just
+wrote**; one that only reddens when its own line changes restates the
+implementation, and a restating suite is worse than none. Prove it by deleting
+the guard, flipping the sign, returning early: every guard you add or touch needs
+a path that goes red. A bug fix starts with the repro as a failing test. Drive
+time through an injected clock — a suite that sleeps or hits the network flakes,
+and a flake gets deleted.
+
 `npm run lint` (Biome `check` from the single root `biome.json`, `recommended`
 preset) must pass: fix or `biome-ignore`-with-reason anything it reports, except
 the accepted `noExplicitAny` / `noNonNullAssertion` warnings (deliberate
