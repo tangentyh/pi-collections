@@ -131,7 +131,9 @@ directory by matching the tag against every `extensions/*/package.json`
 `name@version` and fails loudly on mismatch. After a successful publish it
 also creates a GitHub Release for the tag, using the version's section from
 the extension's `CHANGELOG.md` as the release notes (annotated tag message,
-then GitHub-generated notes, as fallbacks).
+then GitHub-generated notes, as fallbacks). It is idempotent: a version already
+on the registry — the hand-published first one, or a re-run after a partial
+failure — skips `npm publish` and only ensures the Release exists.
 
 Release flow:
 
@@ -150,7 +152,9 @@ Gotchas:
   unscoped `pi-*@*` and scoped `@*/pi-*@*` names: a tag on
   the wrong commit can only be superseded by a new version, not moved.
 - One-time setup per new package: configure its Trusted Publisher on npmjs.com
-  (GitHub Actions → `tangentyh` / `pi-collections` / `publish.yml`).
+  (GitHub Actions → `tangentyh` / `pi-collections` / `publish.yml`) and publish
+  the first version by hand (`npm publish` in the extension directory) — trusted
+  publishing cannot create a package that does not exist yet.
 
 ## Conventions
 
