@@ -98,6 +98,7 @@ async function runTests(
 		clearScreen() {},
 		setTitle() {},
 		setProgress() {},
+		setProgramStatus() {},
 	};
 
 	// ── transcript fixture: spacer(5) · msgA · fillerA(30) · msgB · tail(25)

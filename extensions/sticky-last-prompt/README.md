@@ -60,11 +60,12 @@ stays dormant.
 The pin is a non-capturing full-width overlay anchored top-left; its text
 is resolved from the live transcript tree on every paint (message offsets
 cached per width + content height), with no polling timers. Click interception
-wraps the renderer instance's internal selection handler — in pi 0.85.x,
-click events are consumed centrally before any public extension API can see
-them, and that handler is the only seam left. The same instance patching
-teaches `hasOverlay()` to ignore our non-capturing bar (and only ours), so
-the stock scrollbar and text selection stay live while it is shown. All
+wraps the renderer instance's internal selection handler: pi consumes clicks
+centrally before the extension input APIs see them, so that handler is the seam
+this extension uses. pi 1.4 also exposes a component-level `handleMouse` API to
+overlays; the bar still goes through the renderer patch it was built on. The same
+instance patching teaches `hasOverlay()` to ignore our non-capturing bar (and only
+ours), so the stock scrollbar and text selection stay live while it is shown. All
 internal access is defensive: if a future pi renames these pieces, clicking
 stops working but nothing else breaks.
 

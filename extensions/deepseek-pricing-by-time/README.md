@@ -71,12 +71,14 @@ keeps the rate that was correct when it completed, and its session totals stay
 consistent with what DeepSeek billed. (A replay-based re-pricing path would have to
 reintroduce a pre-2026-09-10 V4-Flash period; until then it would be dead code.)
 
-Each message is looked up by `responseModel` first, falling back to `model`. The
-fallback is what keeps the legacy flash ids priced: DeepSeek echoes a
-`deepseek-v4-flash` (or `-vision-exp`) request as `"model": "deepseek-flash"`, but
-pi's bundled catalog (0.85.1) has no `deepseek-flash` entry, and an unknown id would
-otherwise disable re-pricing entirely and leave pi's stale static catalog cost in
-place. `deepseek-v4-pro` echoes its own id.
+Each message is looked up by `responseModel` first, falling back to `model`, so both
+ids a turn can carry are priced as one. The fallback is what keeps a legacy turn
+priced: DeepSeek echoes a `deepseek-v4-flash` (or `-vision-exp`) request as
+`"model": "deepseek-flash"`, and pi's bundled catalog carries only part of that
+pair — 0.85.1 listed the legacy ids but no `deepseek-flash` entry, pi 1.4 lists
+`deepseek-flash` and has dropped the retired ids — so whichever id the catalog
+leaves unpriced is still re-priced from this extension's schedule instead of
+keeping pi's stale static catalog cost. `deepseek-v4-pro` echoes its own id.
 
 ## Install
 
