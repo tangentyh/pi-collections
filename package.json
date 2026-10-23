@@ -23,15 +23,16 @@
 		"start:sticky-last-prompt": "pi -e ./extensions/sticky-last-prompt/sticky-last-prompt.ts",
 		"start:working-timer": "pi -e ./extensions/working-timer/working-timer.ts",
 		"start:auto-rename": "pi -e ./extensions/auto-rename/auto-rename.ts",
+		"start:system-prompt-trim": "pi -e ./extensions/system-prompt-trim",
 		"prepare": "husky"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "^2.5.12",
+		"@biomejs/biome": "^2.6.2",
 		"@earendil-works/pi-coding-agent": "^1.4.0",
 		"@earendil-works/pi-tui": "^1.4.0",
-		"@types/node": "^22.0.0",
+		"@types/node": "^22.20.5",
 		"husky": "^9.1.7",
-		"typebox": "^1.3.11",
+		"typebox": "^1.4.3",
 		"typescript": "^5.5.0"
 	}
 }

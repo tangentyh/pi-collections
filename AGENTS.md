@@ -51,6 +51,12 @@ Currently in the collection:
 - `auto-rename/` → npm `@tangentyh/pi-auto-rename` — fork of `@normful/pi-auto-name`: auto-generates a session name
   and window name from the conversation and applies the window name to the tmux window, herdr pane/tab,
   and zellij pane/tab the process runs in; deliberately diverges from upstream — see the package README
+- `system-prompt-trim/` → npm `pi-system-prompt-trim` — trims pi's built-in `docs` system-prompt
+  section out of every request and into an on-demand `pi-docs` skill: the section's bullets (doc paths,
+  topic → file index, reading rules, and any variant caveat such as Pi-Bolt's) are transcribed verbatim
+  into a generated `SKILL.md` in a temp dir, and the section is left blank. The `docs` section is the only
+  one trimmed — every other section stays as pi built it (requires pi 1.3+, which exposes the prompt's
+  named sections and its skill list to `before_agent_start`)
 
 Keep this list here in `AGENTS.md` in sync with the table in `README.md` (same order, names, descriptions).
 When adding an extension, add it to both.
@@ -174,5 +180,13 @@ Gotchas:
   README, non-obvious rationale → the code site, decision of record → the
   release CHANGELOG entry; never link a plan as current behavior.
   `docs/PRIOR-ART.md` is research about *other* packages — keep it, dated.
+- **Markdown is deliberately unformatted.** `markdown.formatter.enabled` is
+  off in `biome.json`, so `npm run lint` / `npm run format` never touch `.md`.
+  Biome 2.6's markdown printer re-pads every table cell to the widest cell in
+  its column (one edit to the README table reflows the whole column, which here
+  means ~340-column rows) and deletes the blank line before a list even when
+  that silently destroys an ordered list that does not start at 1 — such a list
+  cannot interrupt a paragraph, so the items collapse into prose. Do not
+  re-enable it, and do not hand-format markdown to match it.
 - Root is never published, never given a `pi` manifest.
 - Do not bump version or modify CHANGELOG unless asked.
