@@ -180,5 +180,13 @@ Gotchas:
   README, non-obvious rationale → the code site, decision of record → the
   release CHANGELOG entry; never link a plan as current behavior.
   `docs/PRIOR-ART.md` is research about *other* packages — keep it, dated.
+- **Markdown is deliberately unformatted.** `markdown.formatter.enabled` is
+  off in `biome.json`, so `npm run lint` / `npm run format` never touch `.md`.
+  Biome 2.6's markdown printer re-pads every table cell to the widest cell in
+  its column (one edit to the README table reflows the whole column, which here
+  means ~340-column rows) and deletes the blank line before a list even when
+  that silently destroys an ordered list that does not start at 1 — such a list
+  cannot interrupt a paragraph, so the items collapse into prose. Do not
+  re-enable it, and do not hand-format markdown to match it.
 - Root is never published, never given a `pi` manifest.
 - Do not bump version or modify CHANGELOG unless asked.
