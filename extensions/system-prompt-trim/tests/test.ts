@@ -1,7 +1,8 @@
 // Test suite for system-prompt-trim. Every expectation is pasted from outside
 // extension:
 //   - PI_DOCS_SECTION is the `docs` section pi 1.3.0 renders
-//     (packages/coding-agent/src/core/system-prompt.ts).
+//     (packages/coding-agent/src/core/system-prompt.ts), re-checked byte for
+//     byte against pi 1.4.0's `buildSystemPromptSections`.
 //   - PIBOLT_LINE is the caveat Pi-Bolt appends to that section (its compiled
 //     `promptSections.docs`). It is the regression this suite exists for: an
 //     earlier version rebuilt the section from a template and dropped it.

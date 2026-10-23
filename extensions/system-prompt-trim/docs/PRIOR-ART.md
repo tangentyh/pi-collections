@@ -106,9 +106,10 @@ advertising (the `pi.skills` manifest entry), or the transcript's section diff
 1. **Scope** — trim one section, ship one skill; no marker strings, no system
    message rewriting, no history cleanup. The few hundred characters that remain
    are the price of not owning the prompt pipeline.
-2. **API** — `systemPromptOptions.sections` (pi 1.3+), read through an untyped
-   access so the package still typechecks against the older `devDependency` and
-   no-ops rather than throws on a release without the map.
+2. **API** — `systemPromptOptions.sections` (pi 1.3+). It is read through pi
+   1.4's own types (`NormalizedBuildSystemPromptOptions`, `Skill`), so a rename
+   upstream is a typecheck failure rather than a silent no-op; the runtime
+   guards keep a release without the map a no-op rather than a throw.
 3. **Differentiation** — package-owned skill (installs and uninstalls as a unit,
    reviewable before install, model-loadable) and a cache-friendly one-section
    delta, with the exact install paths left in the prompt.

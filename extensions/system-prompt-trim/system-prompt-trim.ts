@@ -13,6 +13,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import {
+	createSyntheticSourceInfo,
 	type ExtensionAPI,
 	getAgentDir,
 	getPackageDir,
@@ -239,23 +240,6 @@ function defaultWriteFile(filePath: string, content: string): void {
 	writeFileSync(filePath, content, "utf8");
 }
 
-/** A skill entry as it appears in `systemPromptOptions.skills`. */
-interface SkillEntry {
-	name: string;
-	description: string;
-	filePath: string;
-	baseDir: string;
-	sourceInfo: unknown;
-	disableModelInvocation: boolean;
-}
-
-/** `systemPromptOptions` — the fields this extension reads and writes. */
-interface PromptOptions {
-	selectedTools?: string[];
-	sections?: Record<string, string | null>;
-	skills?: SkillEntry[];
-}
-
 export function registerDocsSkill(
 	pi: ExtensionAPI,
 	deps: DocsSkillDeps = {},
@@ -265,10 +249,10 @@ export function registerDocsSkill(
 	const writeFile = deps.writeFile ?? defaultWriteFile;
 
 	pi.on("before_agent_start", (event) => {
-		// pi 1.3+ exposes the prompt's name → text map here. The untyped read is
-		// deliberate: the workspace typechecks against an older release, and a
-		// missing map must leave the prompt exactly as pi built it.
-		const options = event.systemPromptOptions as unknown as PromptOptions;
+		// pi 1.4 types this as the normalized name → text map and skill list; the
+		// runtime guards below keep a pre-1.4 build (no map at all) a no-op rather
+		// than a throw.
+		const options = event.systemPromptOptions;
 		const sections = options.sections;
 		if (!sections || typeof sections !== "object") return;
 
@@ -312,13 +296,13 @@ export function registerDocsSkill(
 				baseDir: dirname(filePath),
 				// Only name, description, filePath and disableModelInvocation are
 				// read when the skills section is rendered; the rest is scaffolding
-				// for code that inspects loaded skills.
-				sourceInfo: {
-					path: filePath,
+				// for code that inspects loaded skills. The file is a regenerated
+				// cache under pi's agent dir, which is what these values say.
+				sourceInfo: createSyntheticSourceInfo(filePath, {
 					source: "extension",
-					scope: "path",
-					origin: "extension",
-				},
+					scope: "temporary",
+					origin: "top-level",
+				}),
 				disableModelInvocation: false,
 			});
 		}

@@ -8,6 +8,7 @@ import type {
 	ModelsApiStreamOptions,
 	ModelsSimpleStreamOptions,
 	ThinkingLevel,
+	TranscriptContext,
 } from "@earendil-works/pi-ai";
 import type {
 	ExtensionAPI,
@@ -559,7 +560,7 @@ type ModelRegistryWithComplete = ModelRegistry & {
 async function streamViaProvider(
 	modelRegistry: ModelRegistry,
 	model: Model<Api>,
-	context: Context,
+	context: TranscriptContext,
 	options: ModelsSimpleStreamOptions | ModelsApiStreamOptions<Api>,
 	simple: boolean,
 ): Promise<AssistantMessage> {
@@ -608,7 +609,15 @@ async function completeOnce(
 		reasoning?: ThinkingLevel;
 	},
 ): Promise<AssistantMessage> {
-	const context: Context = {
+	// Normalize once, here, where the request context is built: pi 1.4's
+	// provider-facing `stream`/`streamSimple` only accept the branded
+	// `TranscriptContext`, and normalizing folds `systemPrompt` into a leading
+	// system message — so doing it at the construction site keeps every
+	// downstream path (registry or provider fallback) on the same transcript.
+	// `normalizeContext` is the sole sanctioned producer of the brand; loading it
+	// through the cached lazy import keeps pi-ai out of extension load.
+	const { normalizeContext } = await piAi();
+	const context: TranscriptContext = normalizeContext({
 		systemPrompt,
 		messages: [
 			{
@@ -617,7 +626,7 @@ async function completeOnce(
 				timestamp: Date.now(),
 			},
 		],
-	};
+	});
 	const baseOptions = {
 		maxTokens: options.maxTokens,
 		maxRetries: 0,

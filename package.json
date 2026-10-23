@@ -28,8 +28,8 @@
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.6.2",
-		"@earendil-works/pi-coding-agent": "^0.85.1",
-		"@earendil-works/pi-tui": "^0.85.1",
+		"@earendil-works/pi-coding-agent": "^1.4.0",
+		"@earendil-works/pi-tui": "^1.4.0",
 		"@types/node": "^22.20.5",
 		"husky": "^9.1.7",
 		"typebox": "^1.4.3",
