@@ -5,7 +5,7 @@ Transcribes pi's own `docs` system-prompt section into a generated, on-demand
 matters on the rare turn you ask about pi itself.
 
 ```
-before   <docs> 1 498 chars — routing sentence, doc paths, topic → file index, reading rules
+before   <docs> 1 439 chars — routing sentence, doc paths, topic → file index, reading rules
 after    <docs>    16 chars — blank; the whole index lives in the `pi-docs` skill
 ```
 
@@ -75,9 +75,11 @@ The paths can move now, which they could not when the skill shipped as a static
 file: they are absolute and specific to the running install, so a file in the
 package cannot state them. A file written on the machine can.
 
-Prompt cost of the change, measured against pi 1.3.0's section: 1 498 → 16
-chars, and the section does not grow when pi adds topics — the saved text is
-the section's bullets, not a copy of today's index.
+Prompt cost of the change, measured on a brew install of pi 1.4.0 where the
+bullets name that install's absolute doc paths: 1 439 → 16 chars (Pi-Bolt's
+bundle adds its own caveat bullet and starts at 1 498 — the paths, and so the
+saving, scale with the install). The trimmed section does not grow when pi adds
+topics: the saved text is the section's bullets, not a copy of today's index.
 
 ## The generated skill
 
