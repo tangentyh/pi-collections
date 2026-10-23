@@ -1,0 +1,49 @@
+{
+	"name": "pi-system-prompt-trim",
+	"version": "0.1.0",
+	"description": "Trim pi's own `docs` section out of every request: its doc paths, topic index and reading rules move into an on-demand `pi-docs` skill, and the always-on section is blank. Nothing else in the prompt is touched",
+	"keywords": [
+		"pi-package",
+		"pi-extension",
+		"pi-skill",
+		"system-prompt",
+		"system-prompt-trim",
+		"prompt-tokens",
+		"context",
+		"documentation",
+		"docs",
+		"skill"
+	],
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/tangentyh/pi-collections.git",
+		"directory": "extensions/system-prompt-trim"
+	},
+	"homepage": "https://github.com/tangentyh/pi-collections/tree/main/extensions/system-prompt-trim",
+	"type": "module",
+	"pi": {
+		"extensions": [
+			"./system-prompt-trim.ts"
+		]
+	},
+	"scripts": {
+		"typecheck": "tsc --noEmit -p ../..",
+		"test": "node tests/test.ts",
+		"prepublishOnly": "npm run typecheck"
+	},
+	"peerDependencies": {
+		"@earendil-works/pi-coding-agent": "*"
+	},
+	"devDependencies": {
+		"@earendil-works/pi-coding-agent": "^0.85.1",
+		"@types/node": "^22.0.0",
+		"typescript": "^5.5.0"
+	},
+	"files": [
+		"system-prompt-trim.ts",
+		"README.md",
+		"CHANGELOG.md",
+		"LICENSE"
+	]
+}

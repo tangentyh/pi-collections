@@ -13,6 +13,7 @@ A **development-only npm workspace** that collects [pi](https://github.com/earen
 | [pi-sticky-last-prompt](extensions/sticky-last-prompt) | Pins the latest user message that has scrolled completely above the viewport top as a one-line bar at the top of the fullscreen TUI (while a prompt is still crossing the top edge the bar hides rather than duplicate it); left-clicking the bar scrolls the transcript to that message |
 | [pi-working-timer](extensions/working-timer) | Appends live elapsed time to pi's working indicator (`Working · 1m 04s`) for one clock per agent run — prompt submission through `agent_settled`, so tool rounds, retries and compaction retries are included; zero configuration, zero runtime dependencies |
 | [@tangentyh/pi-auto-rename](extensions/auto-rename) | Fork of `@normful/pi-auto-name`: auto-generates a session name and window name from the conversation and applies the window name to the tmux window, herdr pane/tab, and zellij pane/tab the process runs in; deliberately diverges from upstream — see the package README |
+| [pi-system-prompt-trim](extensions/system-prompt-trim) | Trims pi's own `docs` section out of every request: its bullets — doc paths, topic index, reading rules, variant caveats — are transcribed verbatim into an on-demand `pi-docs` skill generated at startup, leaving the section blank (pi 1.3+). The only section it touches |
 
 Each package has its own `README.md` and `LICENSE` (MIT) in its directory — click the name to explore.
 
