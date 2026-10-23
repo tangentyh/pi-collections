@@ -23,6 +23,7 @@
 		"start:sticky-last-prompt": "pi -e ./extensions/sticky-last-prompt/sticky-last-prompt.ts",
 		"start:working-timer": "pi -e ./extensions/working-timer/working-timer.ts",
 		"start:auto-rename": "pi -e ./extensions/auto-rename/auto-rename.ts",
+		"start:system-prompt-trim": "pi -e ./extensions/system-prompt-trim",
 		"prepare": "husky"
 	},
 	"devDependencies": {
