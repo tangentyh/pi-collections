@@ -51,6 +51,12 @@ Currently in the collection:
 - `auto-rename/` → npm `@tangentyh/pi-auto-rename` — fork of `@normful/pi-auto-name`: auto-generates a session name
   and window name from the conversation and applies the window name to the tmux window, herdr pane/tab,
   and zellij pane/tab the process runs in; deliberately diverges from upstream — see the package README
+- `system-prompt-trim/` → npm `pi-system-prompt-trim` — trims pi's built-in `docs` system-prompt
+  section out of every request and into an on-demand `pi-docs` skill: the section's bullets (doc paths,
+  topic → file index, reading rules, and any variant caveat such as Pi-Bolt's) are transcribed verbatim
+  into a generated `SKILL.md` in a temp dir, and the section is left blank. The `docs` section is the only
+  one trimmed — every other section stays as pi built it (requires pi 1.3+, which exposes the prompt's
+  named sections and its skill list to `before_agent_start`)
 
 Keep this list here in `AGENTS.md` in sync with the table in `README.md` (same order, names, descriptions).
 When adding an extension, add it to both.
