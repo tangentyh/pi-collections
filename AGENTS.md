@@ -164,9 +164,8 @@ Gotchas:
 
 ## Conventions
 
-- **Never push to `main`** — PRs only: `protect-main` requires linear history
-  (squash/rebase merges), a green `check` and resolved threads, and rejects
-  direct pushes, force-pushes and deletions. Tag pushes are unaffected.
+- **Never push to `main`** — PRs only, squash-merge: `protect-main` requires a
+  green `check` and resolved threads on `main`; tag pushes are unaffected.
 - Before working on an extension, read that extension's `README.md` first.
 - Extension names are `pi-<name>` on npm; directories keep the plain name.
 - Entry files are semantic (`<name>.ts`), not `index.ts`.
