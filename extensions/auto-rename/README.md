@@ -6,7 +6,7 @@ doing.
 
 This is a **fork** of [`@normful/pi-auto-name`](https://www.npmjs.com/package/@normful/pi-auto-name)
 (v1.1.0) vendored into [`pi-collections`](../../README.md). The upstream sources
-were copied verbatim (with `src/index.ts` renamed to `auto-rename.ts`); four
+were copied verbatim (with `src/index.ts` renamed to `auto-rename.ts`); five
 changes are implemented beyond upstream:
 
 - **Subagent-safe surfaces**: subagent/child sessions no longer rename the
@@ -26,6 +26,10 @@ changes are implemented beyond upstream:
   from the TUI instead of hand-editing `settings.json` (see
   [Setting the naming model from the TUI](#setting-the-naming-model-from-the-tui)).
   Upstream registers no slash commands.
+- **Naming spend and model visibility**: two switches, on by default, showing
+  the effective naming model + effort as a startup transcript line and this
+  session's cumulative naming cost in the footer status (see
+  [Naming spend and the startup line](#naming-spend-and-the-startup-line)).
 
 Upstream documentation (naming styles, language support, prompt behavior)
 remains the authoritative reference for how names are generated; the
@@ -100,6 +104,8 @@ honored only in trusted projects (`ctx.isProjectTrusted()`).
 | `autoRename.enabled` | boolean | `true` | Master switch |
 | `autoRename.namingModel` | string | `""` | `provider/modelId` override for the naming call; empty = the session's current model |
 | `autoRename.namingThinking` | `"off" \| "minimal" \| "low" \| "medium" \| "high" \| "xhigh" \| "max"` | `"off"` | Thinking/reasoning effort for the naming call. `"off"` sends no explicit level and leaves effort at the provider/model default (usually off, though some OpenAI reasoning models still reason at their own default); any level is forwarded as pi-ai's provider-neutral `reasoning` on the `*Simple` stream path |
+| `autoRename.showNamingGreeting` | boolean | `true` | Append one startup transcript line naming the effective naming model and the configured `namingThinking`. TUI-only; written once per session (a resumed session that already has the line is left alone) |
+| `autoRename.showNamingCost` | boolean | `true` | Show this session's cumulative naming cost in the footer status (`naming $0.0012`), once a cost was actually incurred. TUI-only |
 | `autoRename.namingStyle` | `"natural" \| "slug" \| "topic-project"` | `"natural"` | Name style |
 | `autoRename.namingContextDepth` | `"first-user-message" \| "recent-user-messages" \| "full-conversation"` | `"recent-user-messages"` | How much conversation is sent to the naming model |
 | `autoRename.initialRenameTrigger` | `"first-input" \| "first-agent-settled"` | `"first-input"` | When the first rename fires |
@@ -118,6 +124,46 @@ honored only in trusted projects (`ctx.isProjectTrusted()`).
 | `autoRename.surfaces.renameZellijTab` | boolean | `true` | Rename the zellij tab |
 | `autoRename.surfaces.renamePiSessionInNonTuiModes` | boolean | `false` | Allow non-TUI sessions (print/RPC/JSON — e.g. subagent child sessions) to rename **their own** pi session name. Scoped to the session, so safe to enable for subagents. |
 | `autoRename.surfaces.renameMultiplexersInNonTuiModes` | boolean | `false` | Allow non-TUI sessions to rename the process-global tmux window, herdr pane/tab, and zellij pane/tab. A subagent child with this on relabels the parent's pane — leave `false` unless you drive pi through RPC/print inside a multiplexer and want it named. |
+
+### Naming spend and the startup line
+
+Every naming call is a billed model request. Two switches make that visible —
+both on by default (set either to `false` to keep the session file or the footer
+untouched) and both gated on `ctx.mode === "tui"`, so a headless or subagent
+session neither writes display entries into its session file nor claims a footer
+slot it cannot show:
+
+- **`autoRename.showNamingGreeting`** appends one dim transcript line at session
+  start — `[pi-auto-rename] naming: openrouter/nano • effort: off` — naming the
+  model the next naming call will actually use (an `autoRename.namingModel`
+  override is marked `(override)`) and the configured `namingThinking`
+  verbatim. `effort: off` means no explicit level is sent, not "no reasoning":
+  some OpenAI reasoning models still reason at their own default. The line is a
+  custom session entry (never sent to the model, costs no context) and is
+  written once per session — resuming a session that already has it writes
+  nothing. It is deliberately not refreshed by `/auto-rename model …`: it is a
+  startup line, and that command stays authoritative.
+- **`autoRename.showNamingCost`** shows this session's cumulative naming cost in
+  the keyed footer status slot `auto-rename` (visible in pi's built-in footer and
+  in footer-template's `{extensionStatuses}`). Nothing appears until a cost is
+  actually incurred, and the figure uses 4 decimals (`naming $0.0012`, floor
+  `naming <$0.0001`) because a single 2048-token naming call is far below pi's
+  3-decimal session-cost precision and `$0.000` would read as free. A call that
+  cost `0` — a subscription-covered or unpriced model — shows nothing even
+  though tokens were spent; there is no token fallback.
+
+Spend is accumulated from pi-ai's own `usage.cost.total` (raw USD, no currency
+conversion) and persisted as one small `pi-auto-name:usage` session entry per
+billed naming run, so the figure survives `/reload` and resume and stays
+auditable in the session file. A run that is aborted by a session replacement
+records nothing; a billed attempt that ends in the local last-message fallback
+does record its charge.
+
+**What this does not do:** pi's own session cost total still excludes this
+spend. pi sums cost from session *entries* (assistant messages, `usage` entries,
+tool results) and extensions have no API to append those — `ctx.sessionManager`
+is read-only and `appendUsage` is not on `ExtensionAPI`. Footer cost, `/session`
+stats and HTML exports therefore under-report by exactly the amount shown here.
 
 ### Setting the naming model from the TUI
 

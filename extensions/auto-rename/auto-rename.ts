@@ -4,6 +4,7 @@ import {
 	type ExtensionAPI,
 	type ExtensionCommandContext,
 	type ExtensionContext,
+	type ExtensionUIContext,
 	getAgentDir,
 	type ModelRegistry,
 } from "@earendil-works/pi-coding-agent";
@@ -12,12 +13,13 @@ import type { Config } from "./config.js";
 import { buildContext, type NamingContext } from "./context.js";
 import { debug, initDebug } from "./debug.js";
 import { collectExistingSessionNames } from "./dedup.js";
+import { appendNamingGreeting } from "./greeting.js";
 import {
+	effectiveNamingModel,
 	type GenerateFailureReason,
 	type GenerateNamesResult,
 	generateNames,
 	type NamingSession,
-	resolveModel,
 	splitIntoProviderAndModelId,
 	UI_RENAME_TIMEOUT_MS,
 } from "./naming.js";
@@ -26,7 +28,12 @@ import {
 	handleSessionInfoChanged,
 	reconcileProvenanceOnStart,
 } from "./ownership.js";
-import { createState, type RenameState, restoreProvenance } from "./state.js";
+import {
+	createState,
+	type RenameState,
+	recordNamingUsage,
+	restoreTranscriptState,
+} from "./state.js";
 import {
 	applySessionName,
 	logSurfacesEnv,
@@ -59,6 +66,10 @@ interface PreparedRename {
 	renameSession: boolean;
 	/** May write the process-global terminal surfaces (mode gate). */
 	renameSurfaces: boolean;
+	/** Live UI handle, captured so the pipeline can publish the cost status. */
+	ui: ExtensionUIContext;
+	/** Mode at prepare time: the status slot only exists in "tui". */
+	mode: ExtensionContext["mode"];
 }
 
 /**
@@ -91,12 +102,49 @@ function describeNamingModel(
 	cfg: Config,
 ): string {
 	const configured = cfg.namingModel || "default (session model)";
-	const resolved = resolveModel(ctx.modelRegistry, ctx.model, cfg);
-	const effective = resolved
-		? `${resolved.provider}/${resolved.id}`
-		: "none (no session model)";
+	const effective = effectiveNamingModel(
+		ctx.modelRegistry,
+		ctx.model,
+		cfg,
+	).label;
 	const settingsPath = join(getAgentDir(), "settings.json");
 	return `Auto-rename naming model: ${configured} — effective: ${effective} — override saved in ${settingsPath}`;
+}
+
+/**
+ * Footer status key for this session's naming spend. Keyed, so no other
+ * extension can take the slot; rendered by pi's built-in footer and by
+ * footer-template's `{extensionStatuses}`.
+ */
+export const NAMING_STATUS_KEY = "auto-rename";
+
+/**
+ * The status text for a session's cumulative naming spend, or undefined when
+ * nothing was billed. pi formats session cost with 3 decimals; a naming call is
+ * far smaller (a 2048-token call on a cheap model lands under $0.0005), and
+ * $0.000 would read as "free" — hence 4 decimals and a floor for the last
+ * rounding bucket. A zero-cost call (subscription-covered or unpriced model)
+ * shows nothing at all: the gate is "after a cost is incurred", and tokens
+ * alone get no fallback figure.
+ */
+export function formatNamingCost(cost: number): string | undefined {
+	if (!(cost > 0)) return undefined;
+	return cost < 0.00005 ? "naming <$0.0001" : `naming $${cost.toFixed(4)}`;
+}
+
+/**
+ * Publish (or clear) the cost status. `undefined` clears the slot, which is
+ * what a disabled flag or a not-yet-billed session must do.
+ */
+export function updateNamingStatus(
+	ui: ExtensionUIContext,
+	cfg: Config,
+	state: RenameState,
+): void {
+	ui.setStatus(
+		NAMING_STATUS_KEY,
+		cfg.showNamingCost ? formatNamingCost(state.namingCost) : undefined,
+	);
 }
 
 /**
@@ -380,6 +428,8 @@ export default function (pi: ExtensionAPI, deps?: AutoRenameDeps): void {
 			sessionFile: ctx.sessionManager.getSessionFile(),
 			renameSession,
 			renameSurfaces,
+			ui: ctx.ui,
+			mode: ctx.mode,
 			session: {
 				modelRegistry: ctx.modelRegistry,
 				model: ctx.model,
@@ -458,7 +508,17 @@ export default function (pi: ExtensionAPI, deps?: AutoRenameDeps): void {
 			return;
 		}
 
-		// Step 3: apply the session name (race-guarded). Skipped when this session
+		// Step 3: record the spend of this run, before any apply step can bail out
+		// on a race guard — the call was billed either way. Recorded here and not
+		// in applySessionName, which returns early when `renamePiSession` is off and
+		// would drop the spend of a surfaces-only run. The footer figure is
+		// re-published from the accumulated total, so it never has to re-derive it.
+		if (result.usage) {
+			recordNamingUsage(pi, p.state, result.usage);
+			if (p.mode === "tui") updateNamingStatus(p.ui, c, p.state);
+		}
+
+		// Step 4: apply the session name (race-guarded). Skipped when this session
 		// may not write its own name (non-TUI with the session gate off) — the
 		// surfaces below may still be granted independently.
 		if (p.renameSession) {
@@ -496,7 +556,7 @@ export default function (pi: ExtensionAPI, deps?: AutoRenameDeps): void {
 			if (p.generation.aborted) return;
 		}
 
-		// Step 4: sync surfaces to the generated window name. Skipped when this
+		// Step 5: sync surfaces to the generated window name. Skipped when this
 		// session may not write the process-global terminal surfaces.
 		if (p.renameSurfaces) {
 			try {
@@ -578,7 +638,8 @@ export default function (pi: ExtensionAPI, deps?: AutoRenameDeps): void {
 		const generation = generationController.signal;
 		state = createState();
 		cfg = undefined;
-		restoreProvenance(ctx, state);
+		// One pass for provenance, the spend ledger, and the greeting marker.
+		const restored = restoreTranscriptState(ctx, state);
 		const c = await config(ctx);
 		if (generation.aborted) return;
 		debug("session_start", {
@@ -586,8 +647,34 @@ export default function (pi: ExtensionAPI, deps?: AutoRenameDeps): void {
 			restored: {
 				lastAutoName: state.lastAutoName,
 				lastAutoWindowName: state.lastAutoWindowName,
+				namingCalls: state.namingCalls,
+				namingTokens: state.namingTokens,
+				namingCost: state.namingCost,
+				namingModel: state.namingModel,
 			},
 		});
+
+		// Startup line naming the effective model + configured effort. TUI-only:
+		// a headless/subagent session has no greeting to append below and must not
+		// write display entries into its session file. Writes nothing on resume of
+		// a session that already carries one.
+		if (c.showNamingGreeting && ctx.mode === "tui") {
+			appendNamingGreeting(
+				pi,
+				{
+					modelRegistry: ctx.modelRegistry,
+					model: ctx.model,
+					signal: generation,
+				},
+				c,
+				restored.hasGreeting,
+			);
+		}
+
+		// pi clears extension statuses on session switch/reload, so a restored
+		// ledger has to be re-published, not just re-accumulated.
+		if (ctx.mode === "tui" && state.namingCost > 0)
+			updateNamingStatus(ctx.ui, c, state);
 
 		// Respect an existing deliberate name; still sync surfaces to a window
 		// name derived from it (stored window name, else compacted session name).

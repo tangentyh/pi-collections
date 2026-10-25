@@ -349,6 +349,27 @@ export function resolveModel(
 }
 
 /**
+ * The naming model that is actually in effect, plus whether it differs from the
+ * session's own model (i.e. `namingModel` supplied it). Label is `provider/id`,
+ * or a note when nothing resolves. Shared by `/auto-rename model` and the
+ * startup greeting so both name the same effective model.
+ */
+export function effectiveNamingModel(
+	modelRegistry: ModelRegistry,
+	currentModel: Model<Api> | undefined,
+	cfg: Config,
+): { label: string; override: boolean } {
+	const resolved = resolveModel(modelRegistry, currentModel, cfg);
+	if (!resolved) return { label: "none (no session model)", override: false };
+	return {
+		label: `${resolved.provider}/${resolved.id}`,
+		override:
+			resolved.provider !== currentModel?.provider ||
+			resolved.id !== currentModel?.id,
+	};
+}
+
+/**
  * The compact surface label (herdr pane/tab, tmux window, zellij pane/tab),
  * sanitized for the active style. `maxChars` is the enforced budget — callers
  * compute it via `windowNameBudget`. Returns undefined when the value compacts
@@ -449,6 +470,26 @@ export interface GeneratedNames {
 	sessionName: string;
 }
 
+/**
+ * Billed usage of one naming request, model-attributed. `provider`/`model` are
+ * read from the response, not from the resolved `Model`: with a virtual model
+ * the response names the physical model that answered, and `responseModel`
+ * carries that when the provider reports one.
+ */
+export interface NamingUsage {
+	provider: string;
+	/** Model as requested (may be a virtual model). */
+	model: string;
+	/** Physical model that answered, when the provider reports one. */
+	responseModel?: string;
+	input: number;
+	output: number;
+	cacheRead: number;
+	cacheWrite: number;
+	/** usage.cost.total in USD, as pi-ai computed it. */
+	cost: number;
+}
+
 /** Why name generation failed. */
 export type GenerateFailureReason =
 	| "missing_prompt"
@@ -458,8 +499,14 @@ export type GenerateFailureReason =
 	| "invalid_output"
 	| "aborted";
 
+/**
+ * `usage` is absent when the names came from the last-message fallback and no
+ * response was ever billed — and on a response whose usage is entirely zero
+ * (pi-ai reports zeros for some failures). A billed retry that ends in the
+ * fallback still reports its usage: that call was charged.
+ */
 export type GenerateNamesResult =
-	| { ok: true; names: GeneratedNames }
+	| { ok: true; names: GeneratedNames; usage?: NamingUsage }
 	| { ok: false; reason: GenerateFailureReason };
 
 /**
@@ -665,12 +712,40 @@ async function completeOnce(
 
 /** The outcome of one generateNames attempt, so the retry loop stays small. */
 type AttemptResult =
-	| { ok: true; names: GeneratedNames }
+	| { ok: true; names: GeneratedNames; usage?: NamingUsage }
 	| { ok: false; kind: "missing_model" }
 	| { ok: false; kind: "missing_auth" }
 	| { ok: false; kind: "request_failed" }
 	| { ok: false; kind: "aborted" }
-	| { ok: false; kind: "retry" };
+	| { ok: false; kind: "retry"; usage?: NamingUsage };
+
+/**
+ * The billable usage of a received response, or undefined when nothing was
+ * charged: pi-ai reports all-zero usage objects for some failures, and those
+ * must not create a ledger entry. A response with tokens but a zero cost (a
+ * subscription-covered or unpriced model) IS usage — the cost is real, it is
+ * just not priced — and the cost status decides separately what to show.
+ */
+function usageOf(response: AssistantMessage): NamingUsage | undefined {
+	const usage = response.usage;
+	if (!usage) return undefined;
+	const cost = usage.cost?.total ?? 0;
+	const input = usage.input ?? 0;
+	const output = usage.output ?? 0;
+	if (!(cost > 0) && input + output === 0) return undefined;
+	return {
+		provider: String(response.provider),
+		model: response.model,
+		...(response.responseModel
+			? { responseModel: response.responseModel }
+			: {}),
+		input,
+		output,
+		cacheRead: usage.cacheRead ?? 0,
+		cacheWrite: usage.cacheWrite ?? 0,
+		cost,
+	};
+}
 
 /**
  * True for provider abort rejections (fetch-style AbortError). Checked by
@@ -791,10 +866,14 @@ async function attemptOnce(
 		return { ok: false, kind: "request_failed" };
 	}
 
+	// Captured before any classification: every received response may have been
+	// billed, including the ones that end in a retry.
+	const usage = usageOf(response);
+
 	// An aborted stopReason means the session moved on mid-fetch: same silent
 	// handling as a thrown abort — never retry, never fall through to the
 	// last-message fallback (which would rename a session this run no longer
-	// belongs to).
+	// belongs to). No usage is reported: that request belongs to a dead session.
 	if (response.stopReason === "aborted") {
 		debug("generateNames: aborted (stopReason) — exiting for silent handling");
 		return { ok: false, kind: "aborted" };
@@ -807,7 +886,7 @@ async function attemptOnce(
 			stopReason: response.stopReason,
 			errorMessage: response.errorMessage,
 		});
-		return { ok: false, kind: "retry" };
+		return { ok: false, kind: "retry", ...(usage ? { usage } : {}) };
 	}
 
 	// Step 5: parse + sanitize the output.
@@ -848,7 +927,11 @@ async function attemptOnce(
 		return { ok: false, kind: "request_failed" };
 	}
 	if (windowName && sessionName) {
-		return { ok: true, names: { windowName, sessionName } };
+		return {
+			ok: true,
+			names: { windowName, sessionName },
+			...(usage ? { usage } : {}),
+		};
 	}
 	// Salvage: the session name is the primary product (pi session + session
 	// list) while the window is an auxiliary surface label. When the model
@@ -869,11 +952,17 @@ async function attemptOnce(
 		);
 		if (derived) {
 			debug("generateNames: derived window from session", { derived });
-			return { ok: true, names: { windowName: derived, sessionName } };
+			return {
+				ok: true,
+				names: { windowName: derived, sessionName },
+				...(usage ? { usage } : {}),
+			};
 		}
 	}
 	debug("generateNames: invalid output — retrying");
-	return { ok: false, kind: "retry" };
+	// An unusable answer is still a billed call — report it so a run that ends in
+	// the last-message fallback does not hide the spend.
+	return { ok: false, kind: "retry", ...(usage ? { usage } : {}) };
 }
 
 /**
@@ -910,6 +999,10 @@ export async function generateNames(
 	// last-message fallback below, which needs no network.
 	const attemptStart = Date.now();
 	const attemptBudgetMs = options.timeoutMs ?? 30_000;
+	// Usage of the last received response. A retry overwrites it, so a run that
+	// ends in the fallback still reports the spend of a billed, failed attempt —
+	// that is the only record of a charge whose names were unusable.
+	let lastUsage: NamingUsage | undefined;
 	for (let attempt = 0; attempt < RETRIES; attempt++) {
 		if (attempt > 0 && Date.now() - attemptStart > attemptBudgetMs) {
 			debug("generateNames: attempt budget exhausted - falling back", {
@@ -929,7 +1022,10 @@ export async function generateNames(
 			attempt,
 			anchor,
 		);
-		if (res.ok) return { ok: true, names: res.names };
+		if (res.ok) {
+			const usage = res.usage ?? lastUsage;
+			return { ok: true, names: res.names, ...(usage ? { usage } : {}) };
+		}
 		switch (res.kind) {
 			case "missing_model":
 				return { ok: false, reason: "missing_model" };
@@ -940,6 +1036,7 @@ export async function generateNames(
 			case "aborted":
 				return { ok: false, reason: "aborted" };
 			case "retry":
+				if (res.usage) lastUsage = res.usage;
 				continue; // invalid / non-stop output → try again
 		}
 	}
@@ -968,6 +1065,7 @@ export async function generateNames(
 		return {
 			ok: true,
 			names: { windowName: fallbackWindow, sessionName: fallbackSession },
+			...(lastUsage ? { usage: lastUsage } : {}),
 		};
 	}
 	debug("generateNames: invalid_output — fallback produced nothing usable");

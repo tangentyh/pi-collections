@@ -50,6 +50,7 @@
 		"context.ts",
 		"debug.ts",
 		"dedup.ts",
+		"greeting.ts",
 		"i18n.ts",
 		"io.ts",
 		"locales.ts",
