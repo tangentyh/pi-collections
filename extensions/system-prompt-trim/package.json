@@ -9,6 +9,8 @@
 		"system-prompt",
 		"system-prompt-trim",
 		"prompt-tokens",
+		"prompt-cache",
+		"cache",
 		"context",
 		"documentation",
 		"docs",
