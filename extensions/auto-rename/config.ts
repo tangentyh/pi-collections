@@ -53,6 +53,18 @@ export const ConfigSchema = Type.Object({
 	),
 	skipSessionNameDedup: Type.Boolean({ default: false }),
 	namingModel: Type.String({ default: "" }),
+	// Two visibility surfaces, both on by default and each individually
+	// switchable off. Both are additionally gated on ctx.mode === "tui" (a
+	// headless/subagent session has no footer and should not write greeting
+	// entries into its session file). Set them to false to keep the session file
+	// and the footer untouched.
+	//
+	// showNamingGreeting: append one startup transcript entry naming the
+	// effective naming model + configured effort.
+	// showNamingCost: publish this session's cumulative naming cost in the footer
+	// status slot, once a cost was actually incurred.
+	showNamingGreeting: Type.Boolean({ default: true }),
+	showNamingCost: Type.Boolean({ default: true }),
 	// Thinking/reasoning effort for the naming call. "off" sends no explicit
 	// level, leaving effort at the provider/model default (usually off; some
 	// OpenAI reasoning models still reason at their own default). Any other
@@ -151,6 +163,8 @@ export function loadConfig(
 		enabled: cfg.enabled,
 		namingStyle: cfg.namingStyle,
 		namingThinking: cfg.namingThinking,
+		showNamingGreeting: cfg.showNamingGreeting,
+		showNamingCost: cfg.showNamingCost,
 		initialRenameTrigger: cfg.initialRenameTrigger,
 		reRenameEveryNTurns: cfg.reRenameEveryNTurns,
 		replaceExistingName: cfg.replaceExistingName,

@@ -1,10 +1,26 @@
-// state.ts — per-session state + transcript provenance.
+// state.ts — per-session state + transcript provenance / naming-spend ledger.
 import type {
 	ExtensionAPI,
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
+import { GREETING_ENTRY_TYPE } from "./greeting.js";
+import type { NamingUsage } from "./naming.js";
 
 export const ENTRY_TYPE = "pi-auto-name";
+
+/**
+ * Custom entry type for this session's naming spend: one entry per billed
+ * naming run. Durable on purpose — it is what lets the footer figure survive
+ * /reload and resume, and it is the only record in the session file that a
+ * naming call happened (pi's own session cost sums assistant/usage entries,
+ * and an extension cannot append those).
+ */
+export const USAGE_ENTRY_TYPE = "pi-auto-name:usage";
+
+/** Data of one usage entry: the billed usage of one naming run, plus its time. */
+export interface UsageEntryData extends NamingUsage {
+	at: string;
+}
 
 export interface RenameState {
 	done: boolean; // initial rename completed or skipped
@@ -14,6 +30,10 @@ export interface RenameState {
 	autoRenameLocked: boolean; // external rename latched: auto-renaming is locked off for the session (when respectExternalRenames)
 	turnsSeen: number; // agent_settled counter (turn-interval re-rename; one settled user-facing turn = one unit)
 	nameAtGenerationStart: string | undefined; // for the race guard
+	namingCalls: number; // billed naming runs this session (usage entries)
+	namingTokens: number; // input + output + cacheRead + cacheWrite of those runs
+	namingCost: number; // USD, as pi-ai priced it
+	namingModel: string | undefined; // last model that produced a name (greeting/status context)
 }
 
 export function createState(): RenameState {
@@ -25,6 +45,10 @@ export function createState(): RenameState {
 		autoRenameLocked: false,
 		turnsSeen: 0,
 		nameAtGenerationStart: undefined,
+		namingCalls: 0,
+		namingTokens: 0,
+		namingCost: 0,
+		namingModel: undefined,
 	};
 }
 
@@ -54,13 +78,87 @@ export function recordAutoRename(
 	});
 }
 
-/** Scan transcript for our entries so `lastAutoName`/`lastAutoWindowName` survive reload/resume. */
-export function restoreProvenance(
+/**
+ * Fold one billed naming run into the session totals.
+ *
+ * Tokens count all four buckets: a cached read is billed (cheaper) and would
+ * silently vanish from the figure otherwise.
+ */
+function accumulateUsage(state: RenameState, usage: NamingUsage): void {
+	state.namingCalls += 1;
+	state.namingTokens +=
+		usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
+	state.namingCost += usage.cost;
+	state.namingModel = usage.responseModel ?? usage.model;
+}
+
+/**
+ * Record the spend of one naming run: accumulate in memory and append the
+ * durable ledger entry. Called from the pipeline on every ok result that
+ * carries usage — NOT from applySessionName, which returns early when
+ * `surfaces.renamePiSession` is off and would lose the spend of a
+ * surfaces-only run. Appended once per billed run, regardless of which
+ * surfaces were written.
+ *
+ * Deliberately no numbering/capping: one line per billed naming run, so the
+ * footer figure stays auditable in the session file. With
+ * `reRenameEveryNTurns: 1` that is one small entry per settled turn.
+ */
+export function recordNamingUsage(
+	pi: ExtensionAPI,
+	state: RenameState,
+	usage: NamingUsage,
+): void {
+	accumulateUsage(state, usage);
+	pi.appendEntry<UsageEntryData>(USAGE_ENTRY_TYPE, {
+		...usage,
+		at: new Date().toISOString(),
+	});
+}
+
+/** What the transcript scan found that is not a running total. */
+export interface RestoredTranscriptState {
+	/** A startup greeting entry already exists (skip re-appending it on resume). */
+	hasGreeting: boolean;
+}
+
+/**
+ * One pass over the transcript for every custom entry this extension owns, so
+ * `lastAutoName`/`lastAutoWindowName` (provenance), the naming-spend totals
+ * (usage ledger) and the greeting marker survive reload/resume. The greeting
+ * idempotence check rides on this same pass instead of a second
+ * `getEntries()` walk.
+ *
+ * Sessions recorded before the ledger existed simply have no usage entries:
+ * totals stay 0 and the cost status stays hidden.
+ */
+export function restoreTranscriptState(
 	ctx: ExtensionContext,
 	state: RenameState,
-): void {
+): RestoredTranscriptState {
+	let hasGreeting = false;
 	for (const entry of ctx.sessionManager.getEntries()) {
-		if (entry.type !== "custom" || entry.customType !== ENTRY_TYPE) continue;
+		if (entry.type !== "custom") continue;
+		if (entry.customType === GREETING_ENTRY_TYPE) {
+			hasGreeting = true;
+			continue;
+		}
+		if (entry.customType === USAGE_ENTRY_TYPE) {
+			const usage = entry.data as Partial<UsageEntryData> | undefined;
+			if (!usage) continue;
+			accumulateUsage(state, {
+				provider: usage.provider ?? "",
+				model: usage.model ?? "",
+				...(usage.responseModel ? { responseModel: usage.responseModel } : {}),
+				input: usage.input ?? 0,
+				output: usage.output ?? 0,
+				cacheRead: usage.cacheRead ?? 0,
+				cacheWrite: usage.cacheWrite ?? 0,
+				cost: usage.cost ?? 0,
+			});
+			continue;
+		}
+		if (entry.customType !== ENTRY_TYPE) continue;
 		const data = entry.data as
 			| { sessionName?: string; windowName?: string }
 			| undefined;
@@ -73,4 +171,5 @@ export function restoreProvenance(
 		if (typeof data.windowName === "string")
 			state.lastAutoWindowName = data.windowName;
 	}
+	return { hasGreeting };
 }

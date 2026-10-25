@@ -102,6 +102,10 @@ function makeCfg(overrides: CfgOverrides = {}): Config {
 		skipSessionNameDedup: true,
 		namingModel: "",
 		namingThinking: "off",
+		// The schema defaults: both visibility surfaces are on. The checks that
+		// exercise the off path (or want silence) pass false explicitly.
+		showNamingGreeting: true,
+		showNamingCost: true,
 		language: "en",
 	};
 	return {
@@ -122,6 +126,12 @@ interface Stub {
 	sessionName: string | undefined;
 	/** How many times the naming pipeline read `ctx.model`. */
 	modelReads: number;
+	/** The live transcript: what `appendEntry` wrote, as `getEntries` reads it. */
+	entries: unknown[];
+	/** Registered entry renderers, keyed by custom entry type. */
+	renderers: Map<string, (...a: unknown[]) => unknown>;
+	/** Every `ctx.ui.setStatus` call, in order. */
+	statuses: { key: string; text: string | undefined }[];
 }
 
 /** A stub ExtensionAPI that records event handlers and every exec call. */
@@ -134,6 +144,9 @@ function makeStub(): Stub {
 		calls: [],
 		sessionName: undefined,
 		modelReads: 0,
+		entries: [],
+		renderers: new Map(),
+		statuses: [],
 	};
 	stub.pi = {
 		on: (ev: string, h: (...a: unknown[]) => unknown) => {
@@ -149,8 +162,15 @@ function makeStub(): Stub {
 		setSessionName: (n: string) => {
 			stub.sessionName = n;
 		},
-		appendEntry: () => {},
-		registerEntryRenderer: () => {},
+		appendEntry: (customType: string, data?: unknown) => {
+			stub.entries.push({ type: "custom", customType, data });
+		},
+		registerEntryRenderer: (
+			customType: string,
+			renderer: (...a: unknown[]) => unknown,
+		) => {
+			stub.renderers.set(customType, renderer);
+		},
 		exec: async (cmd: string, args: string[]) => {
 			stub.calls.push({ cmd, args });
 			return { stdout: "", stderr: "", code: 0 };
@@ -171,8 +191,8 @@ function makeCtx(mode: string, stub: Stub): ExtensionContext {
 		mode,
 		hasUI: false,
 		sessionManager: {
-			getEntries: () => [],
-			buildContextEntries: () => [],
+			getEntries: () => stub.entries,
+			buildContextEntries: () => stub.entries,
 			getSessionFile: () => undefined,
 		},
 		signal: undefined,
@@ -181,6 +201,9 @@ function makeCtx(mode: string, stub: Stub): ExtensionContext {
 		ui: {
 			notify: (message: string, type?: string) => {
 				stub.notifications.push({ message, type });
+			},
+			setStatus: (key: string, text: string | undefined) => {
+				stub.statuses.push({ key, text });
 			},
 		},
 		get model() {
@@ -199,6 +222,177 @@ function makeRegistry(
 			models.find((m) => m.provider === provider && m.id === modelId),
 		getAvailable: () => models,
 	} as unknown as ExtensionContext["modelRegistry"];
+}
+
+// ── fake naming backend ───────────────────────────────────────────────
+//
+// The handler tests drive the REAL naming pipeline (prompt, call, parse,
+// ledger) without a network: the fake registry answers `complete` from a queue
+// of canned AssistantMessages. The usage figures are pi-ai's vendored `Usage`
+// shape (dist/types.d.ts) with the cost totals taken from the plan's worked
+// example, not recomputed from anything here.
+
+/** input, output, cacheRead, cacheWrite, and cost.total — the billed buckets. */
+interface FakeUsage {
+	input: number;
+	output: number;
+	cacheRead: number;
+	cacheWrite: number;
+	cost: number;
+}
+
+interface FakeResponse {
+	text?: string;
+	stopReason?: string;
+	usage?: FakeUsage;
+	responseModel?: string;
+}
+
+/** Two billed runs: A is 1480 tokens / $0.001, B is 960 tokens / $0.0024. */
+const USAGE_A: FakeUsage = {
+	input: 1200,
+	output: 80,
+	cacheRead: 200,
+	cacheWrite: 0,
+	cost: 0.001,
+};
+const USAGE_B: FakeUsage = {
+	input: 800,
+	output: 40,
+	cacheRead: 0,
+	cacheWrite: 120,
+	cost: 0.0024,
+};
+
+const GOOD_NAMES = "WINDOW: alpha beta\nSESSION: Alpha beta session";
+
+/** An AssistantMessage as pi-ai produces it, with usage in its vendored shape. */
+function assistantResponse(response: FakeResponse): unknown {
+	const usage = response.usage ?? {
+		input: 0,
+		output: 0,
+		cacheRead: 0,
+		cacheWrite: 0,
+		cost: 0,
+	};
+	return {
+		role: "assistant",
+		content:
+			response.text === undefined
+				? []
+				: [{ type: "text", text: response.text }],
+		api: "openai-completions",
+		provider: "openrouter",
+		model: "nano",
+		...(response.responseModel
+			? { responseModel: response.responseModel }
+			: {}),
+		usage: {
+			input: usage.input,
+			output: usage.output,
+			cacheRead: usage.cacheRead,
+			cacheWrite: usage.cacheWrite,
+			totalTokens:
+				usage.input + usage.output + usage.cacheRead + usage.cacheWrite,
+			cost: {
+				input: 0,
+				output: 0,
+				cacheRead: 0,
+				cacheWrite: 0,
+				total: usage.cost,
+			},
+		},
+		stopReason: response.stopReason ?? "stop",
+		timestamp: 0,
+	};
+}
+
+/**
+ * A ctx that can actually run a rename: a session model and a registry whose
+ * `complete` answers from the queued responses. `hasUI` stays false (the input
+ * handler then awaits the pipeline instead of deferring it, so a check can
+ * assert right after the handler resolves).
+ *
+ * `model` is the session's model, `available` the model the registry knows —
+ * they differ when the test exercises a `namingModel` override.
+ */
+function makeRenameCtx(
+	stub: Stub,
+	options: {
+		responses: FakeResponse[];
+		mode?: string;
+		model?: { provider: string; id: string };
+		available?: { provider: string; id: string };
+	},
+): ExtensionContext {
+	const queue = [...options.responses];
+	const model = options.model ?? { provider: "openrouter", id: "nano" };
+	const available = options.available ?? { provider: "openrouter", id: "nano" };
+	const registry = {
+		find: (provider: string, id: string) =>
+			provider === available.provider && id === available.id
+				? available
+				: undefined,
+		getAvailable: () => [available],
+		complete: async () => {
+			const next = queue.shift();
+			assert.ok(
+				next,
+				"the naming pipeline called the model more often than the test queued responses",
+			);
+			return assistantResponse(next);
+		},
+	};
+	const base = makeCtx(options.mode ?? "tui", stub) as unknown as Record<
+		string,
+		unknown
+	>;
+	return {
+		...base,
+		model,
+		modelRegistry: registry,
+	} as unknown as ExtensionContext;
+}
+
+/** A transcript entry of one custom type, as a previous session left it. */
+function usageEntry(usage: FakeUsage): unknown {
+	return {
+		type: "custom",
+		customType: "pi-auto-name:usage",
+		data: {
+			at: "2026-02-01T00:00:00.000Z",
+			provider: "openrouter",
+			model: "nano",
+			input: usage.input,
+			output: usage.output,
+			cacheRead: usage.cacheRead,
+			cacheWrite: usage.cacheWrite,
+			cost: usage.cost,
+		},
+	};
+}
+
+/** A user message entry, so a settled-turn rename has a naming context. */
+function userMessageEntry(text: string): unknown {
+	return {
+		type: "message",
+		message: { role: "user", content: [{ type: "text", text }] },
+	};
+}
+
+/** The greeting expectation both the handler test and the renderer test use. */
+const GREETING_TYPE = "pi-auto-name:greeting";
+const USAGE_TYPE = "pi-auto-name:usage";
+const STATUS_KEY = "auto-rename";
+
+/** Custom entries of one type in the live transcript. */
+function entriesOfType(
+	stub: Stub,
+	customType: string,
+): { customType: string; data?: unknown }[] {
+	return stub.entries.filter(
+		(entry) => (entry as { customType?: string }).customType === customType,
+	) as { customType: string; data?: unknown }[];
 }
 
 /**
@@ -777,4 +971,574 @@ async function runTests(mod: Mod): Promise<void> {
 		await command(stub, "auto-rename").handler("thinking high", ctx);
 		assert.equal(stub.notifications.at(-1)?.type, "warning");
 	});
+
+	// ── 7. the two visibility config keys ───────────────────────────
+
+	await check("config: the visibility flags default to true", async () => {
+		const { loadConfig } = (await import(
+			configUrl
+		)) as typeof import("../config.ts");
+		const paths = settingsPaths("auto-rename-visibility-defaults-");
+		const cfg = await loadConfig(fakeCtx(tmpdir(), true), paths);
+		assert.equal(cfg.showNamingGreeting, true);
+		assert.equal(cfg.showNamingCost, true);
+	});
+
+	await check(
+		"config: project settings can turn a visibility flag off, untouched global keys survive",
+		async () => {
+			const { loadConfig } = (await import(
+				configUrl
+			)) as typeof import("../config.ts");
+			const paths = settingsPaths("auto-rename-visibility-merge-");
+			writeJson(paths.globalSettingsPath, {
+				autoRename: { showNamingGreeting: false },
+			});
+			writeJson(paths.projectSettingsPath, {
+				autoRename: { showNamingCost: false },
+			});
+			const cfg = await loadConfig(fakeCtx(tmpdir(), true), paths);
+			assert.equal(cfg.showNamingCost, false);
+			assert.equal(cfg.showNamingGreeting, false);
+		},
+	);
+
+	// ── 8. the startup greeting entry ───────────────────────────────
+
+	await check(
+		"greeting: appended once on a fresh tui session, not again on resume",
+		async () => {
+			const stub = makeStub();
+			factory(stub.pi, {
+				loadConfig: () =>
+					makeCfg({ showNamingGreeting: true, namingThinking: "low" }),
+			});
+			const ctx = makeRenameCtx(stub, { responses: [] });
+			await handler(stub, "session_start")({ reason: "startup" }, ctx);
+			const greetings = entriesOfType(stub, GREETING_TYPE);
+			assert.equal(
+				greetings.length,
+				1,
+				`expected one greeting entry, got ${JSON.stringify(stub.entries)}`,
+			);
+			const data = greetings[0].data as {
+				model: string;
+				effort: string;
+				override: boolean;
+				at: string;
+			};
+			assert.equal(data.model, "openrouter/nano");
+			assert.equal(data.effort, "low");
+			assert.equal(data.override, false);
+			assert.equal(typeof data.at, "string");
+			assert.ok(
+				stub.renderers.has(GREETING_TYPE),
+				"the greeting entry renderer was not registered on the api instance",
+			);
+
+			// Resume: the transcript already carries the greeting.
+			await handler(stub, "session_start")({ reason: "resume" }, ctx);
+			assert.equal(entriesOfType(stub, GREETING_TYPE).length, 1);
+		},
+	);
+
+	await check(
+		"greeting: a resumed session renders its replayed greeting without writing another",
+		async () => {
+			const stub = makeStub();
+			factory(stub.pi, {
+				loadConfig: () => makeCfg({ showNamingGreeting: true }),
+			});
+			stub.entries.push({
+				type: "custom",
+				customType: GREETING_TYPE,
+				data: {
+					at: "2026-02-01T00:00:00.000Z",
+					model: "openrouter/nano",
+					effort: "off",
+					override: false,
+				},
+			});
+			await handler(stub, "session_start")(
+				{ reason: "resume" },
+				makeRenameCtx(stub, { responses: [] }),
+			);
+			assert.equal(entriesOfType(stub, GREETING_TYPE).length, 1);
+			assert.ok(
+				stub.renderers.has(GREETING_TYPE),
+				"the replayed greeting entry has no renderer",
+			);
+		},
+	);
+
+	await check(
+		"greeting: names the namingModel override, not the session model",
+		async () => {
+			const stub = makeStub();
+			factory(stub.pi, {
+				loadConfig: () =>
+					makeCfg({
+						showNamingGreeting: true,
+						namingModel: "openrouter/fast",
+						namingThinking: "max",
+					}),
+			});
+			const ctx = makeRenameCtx(stub, {
+				responses: [],
+				model: { provider: "anthropic", id: "claude" },
+				available: { provider: "openrouter", id: "fast" },
+			});
+			await handler(stub, "session_start")({ reason: "startup" }, ctx);
+			const data = entriesOfType(stub, GREETING_TYPE)[0]?.data as {
+				model: string;
+				override: boolean;
+			};
+			assert.equal(data.model, "openrouter/fast");
+			assert.equal(data.override, true);
+		},
+	);
+
+	await check("greeting: not appended when the flag is off", async () => {
+		const stub = makeStub();
+		factory(stub.pi, {
+			loadConfig: () => makeCfg({ showNamingGreeting: false }),
+		});
+		await handler(stub, "session_start")(
+			{ reason: "startup" },
+			makeRenameCtx(stub, { responses: [] }),
+		);
+		assert.deepEqual(entriesOfType(stub, GREETING_TYPE), []);
+	});
+
+	await check("greeting: not appended in non-tui mode", async () => {
+		const stub = makeStub();
+		factory(stub.pi, {
+			loadConfig: () => makeCfg({ showNamingGreeting: true }),
+		});
+		await handler(stub, "session_start")(
+			{ reason: "startup" },
+			makeRenameCtx(stub, { responses: [], mode: "print" }),
+		);
+		assert.deepEqual(entriesOfType(stub, GREETING_TYPE), []);
+	});
+
+	await check(
+		"greeting: the renderer prints model and effort verbatim, `off` stays `off`",
+		async () => {
+			const { renderGreetingEntry } = (await import(
+				pathToFileURL(join(tmpDir, "greeting.js")).href
+			)) as typeof import("../greeting.ts");
+			const theme = {
+				fg: (_color: string, text: string) => text,
+			} as unknown as Parameters<typeof renderGreetingEntry>[2];
+			const render = (data: unknown): string => {
+				const component = renderGreetingEntry(
+					{
+						type: "custom",
+						customType: GREETING_TYPE,
+						data,
+					} as never,
+					{} as never,
+					theme,
+				);
+				return (component?.render(200) ?? [])
+					.map((line) => line.trim())
+					.filter(Boolean)
+					.join("\n");
+			};
+			assert.equal(
+				render({
+					at: "2026-02-01T00:00:00.000Z",
+					model: "openrouter/nano",
+					effort: "off",
+					override: false,
+				}),
+				"[pi-auto-rename] naming: openrouter/nano • effort: off",
+			);
+			assert.equal(
+				render({
+					at: "2026-02-01T00:00:00.000Z",
+					model: "openrouter/fast",
+					effort: "xhigh",
+					override: true,
+				}),
+				"[pi-auto-rename] naming: openrouter/fast • effort: xhigh (override)",
+			);
+		},
+	);
+
+	// ── 9. usage threading through the naming pipeline ──────────────
+
+	await check(
+		"usage: a billed rename records the response's usage in the ledger",
+		async () => {
+			const stub = makeStub();
+			factory(stub.pi, { loadConfig: () => makeCfg() });
+			const ctx = makeRenameCtx(stub, {
+				responses: [
+					{ text: GOOD_NAMES, usage: USAGE_A, responseModel: "nano-v2" },
+				],
+			});
+			await handler(stub, "input")(
+				{ source: "user", text: "hello world" },
+				ctx,
+			);
+			const ledger = entriesOfType(stub, USAGE_TYPE);
+			assert.equal(ledger.length, 1);
+			const data = ledger[0].data as Record<string, unknown>;
+			assert.equal(data.provider, "openrouter");
+			assert.equal(data.model, "nano");
+			assert.equal(data.responseModel, "nano-v2");
+			assert.equal(data.input, 1200);
+			assert.equal(data.output, 80);
+			assert.equal(data.cacheRead, 200);
+			assert.equal(data.cacheWrite, 0);
+			assert.equal(data.cost, 0.001);
+			assert.equal(typeof data.at, "string");
+		},
+	);
+
+	await check(
+		"usage: a billed retry is overwritten by the attempt that succeeds (one ledger entry)",
+		async () => {
+			const stub = makeStub();
+			factory(stub.pi, { loadConfig: () => makeCfg() });
+			const ctx = makeRenameCtx(stub, {
+				responses: [
+					{ stopReason: "error", usage: USAGE_A },
+					{ text: GOOD_NAMES, usage: USAGE_B },
+				],
+			});
+			await handler(stub, "input")(
+				{ source: "user", text: "hello world" },
+				ctx,
+			);
+			const ledger = entriesOfType(stub, USAGE_TYPE);
+			assert.equal(ledger.length, 1);
+			const data = ledger[0].data as Record<string, unknown>;
+			assert.equal(data.input, 800);
+			assert.equal(data.output, 40);
+			assert.equal(data.cacheRead, 0);
+			assert.equal(data.cacheWrite, 120);
+			assert.equal(data.cost, 0.0024);
+		},
+	);
+
+	await check(
+		"usage: a billed non-stop retry supplies the usage when the final attempt reports none",
+		async () => {
+			const stub = makeStub();
+			factory(stub.pi, { loadConfig: () => makeCfg() });
+			const ctx = makeRenameCtx(stub, {
+				responses: [
+					{ stopReason: "length", usage: USAGE_A },
+					{ text: GOOD_NAMES }, // usable answer, all-zero usage
+				],
+			});
+			await handler(stub, "input")(
+				{ source: "user", text: "hello world" },
+				ctx,
+			);
+			const ledger = entriesOfType(stub, USAGE_TYPE);
+			assert.equal(ledger.length, 1);
+			assert.equal((ledger[0].data as { cost: number }).cost, 0.001);
+		},
+	);
+
+	await check(
+		"usage: a billed attempt that ends in the last-message fallback still records its spend",
+		async () => {
+			const stub = makeStub();
+			factory(stub.pi, { loadConfig: () => makeCfg() });
+			const ctx = makeRenameCtx(stub, {
+				responses: [
+					{ text: "no labels here", usage: USAGE_A },
+					{ text: "no labels here", usage: USAGE_A },
+					{ text: "no labels here", usage: USAGE_A },
+				],
+			});
+			await handler(stub, "input")(
+				{ source: "user", text: "hello world" },
+				ctx,
+			);
+			// The names came from the local fallback, but the calls were billed.
+			assert.equal(stub.sessionName, "hello world");
+			const ledger = entriesOfType(stub, USAGE_TYPE);
+			assert.equal(ledger.length, 1);
+			assert.equal((ledger[0].data as { cost: number }).cost, 0.001);
+		},
+	);
+
+	await check(
+		"usage: an all-zero usage object creates no ledger entry",
+		async () => {
+			const stub = makeStub();
+			factory(stub.pi, { loadConfig: () => makeCfg({ showNamingCost: true }) });
+			// pi-ai reports all-zero usage for some failures; nothing was billed.
+			const ctx = makeRenameCtx(stub, { responses: [{ text: GOOD_NAMES }] });
+			await handler(stub, "input")(
+				{ source: "user", text: "hello world" },
+				ctx,
+			);
+			assert.equal(entriesOfType(stub, USAGE_TYPE).length, 0);
+			assert.deepEqual(stub.statuses, []);
+		},
+	);
+
+	await check(
+		"usage: a surfaces-only run (no session rename) still records its spend",
+		async () => {
+			const stub = makeStub();
+			factory(stub.pi, {
+				loadConfig: () =>
+					makeCfg({
+						showNamingCost: true,
+						surfaces: { renamePiSession: false, renameTmuxWindow: true },
+					}),
+			});
+			const ctx = makeRenameCtx(stub, {
+				responses: [{ text: GOOD_NAMES, usage: USAGE_A }],
+			});
+			await handler(stub, "input")(
+				{ source: "user", text: "hello world" },
+				ctx,
+			);
+			// No pi session rename…
+			assert.equal(stub.sessionName, undefined);
+			// …but the naming call was billed, and only applySessionName skips.
+			assert.equal(entriesOfType(stub, USAGE_TYPE).length, 1);
+			assert.deepEqual(stub.statuses.at(-1), {
+				key: STATUS_KEY,
+				text: "naming $0.0010",
+			});
+		},
+	);
+
+	await check("usage: an aborted run records nothing", async () => {
+		const stub = makeStub();
+		factory(stub.pi, { loadConfig: () => makeCfg({ showNamingCost: true }) });
+		const ctx = makeRenameCtx(stub, {
+			responses: [{ stopReason: "aborted", usage: USAGE_A }],
+		});
+		await handler(stub, "input")({ source: "user", text: "hello world" }, ctx);
+		assert.deepEqual(entriesOfType(stub, USAGE_TYPE), []);
+		assert.deepEqual(stub.statuses, []);
+		assert.equal(stub.sessionName, undefined);
+	});
+
+	// ── 10. the footer cost status ──────────────────────────────────
+
+	await check(
+		"status: two billed renames sum into the footer status",
+		async () => {
+			const stub = makeStub();
+			factory(stub.pi, {
+				loadConfig: () =>
+					makeCfg({
+						showNamingCost: true,
+						initialRenameTrigger: "first-agent-settled",
+						reRenameEveryNTurns: 1,
+					}),
+			});
+			stub.entries.push(userMessageEntry("hello world"));
+			const ctx = makeRenameCtx(stub, {
+				responses: [
+					{ text: GOOD_NAMES, usage: USAGE_A },
+					{ text: GOOD_NAMES, usage: USAGE_B },
+				],
+			});
+			const settled = handler(stub, "agent_settled");
+			await settled({}, ctx); // turn 1 → initial rename
+			assert.deepEqual(stub.statuses.at(-1), {
+				key: STATUS_KEY,
+				text: "naming $0.0010",
+			});
+			await settled({}, ctx); // turn 2 → interval re-rename
+			assert.deepEqual(stub.statuses.at(-1), {
+				key: STATUS_KEY,
+				text: "naming $0.0034",
+			});
+			assert.equal(entriesOfType(stub, USAGE_TYPE).length, 2);
+		},
+	);
+
+	await check("status: the sub-cent floor avoids reading as free", async () => {
+		const { formatNamingCost } = (await import(
+			pathToFileURL(join(tmpDir, "auto-rename.js")).href
+		)) as typeof import("../auto-rename.ts");
+		// The plan's display rule: 4 decimals, and `<$0.0001` below the last bucket.
+		assert.equal(formatNamingCost(0.00004), "naming <$0.0001");
+		assert.equal(formatNamingCost(0.00006), "naming $0.0001");
+		assert.equal(formatNamingCost(0.001084), "naming $0.0011");
+		assert.equal(formatNamingCost(0.0034), "naming $0.0034");
+		// Nothing is shown for zero (a subscription-covered or unpriced model).
+		assert.equal(formatNamingCost(0), undefined);
+	});
+
+	await check(
+		"status: nothing is published before a cost is incurred",
+		async () => {
+			const stub = makeStub();
+			factory(stub.pi, { loadConfig: () => makeCfg({ showNamingCost: true }) });
+			await handler(stub, "session_start")(
+				{ reason: "startup" },
+				makeRenameCtx(stub, { responses: [] }),
+			);
+			assert.deepEqual(stub.statuses, []);
+		},
+	);
+
+	await check(
+		"status: tokens with a zero cost show no figure (no token fallback)",
+		async () => {
+			const stub = makeStub();
+			factory(stub.pi, { loadConfig: () => makeCfg({ showNamingCost: true }) });
+			const ctx = makeRenameCtx(stub, {
+				responses: [
+					{
+						text: GOOD_NAMES,
+						usage: {
+							input: 1200,
+							output: 80,
+							cacheRead: 0,
+							cacheWrite: 0,
+							cost: 0,
+						},
+					},
+				],
+			});
+			await handler(stub, "input")(
+				{ source: "user", text: "hello world" },
+				ctx,
+			);
+			// The spend is real and recorded; it is just unpriced.
+			assert.equal(entriesOfType(stub, USAGE_TYPE).length, 1);
+			assert.ok(
+				stub.statuses.every((s) => s.text === undefined),
+				`expected no figure, got ${JSON.stringify(stub.statuses)}`,
+			);
+		},
+	);
+
+	await check(
+		"status: a billed rename in non-tui mode publishes nothing",
+		async () => {
+			const stub = makeStub();
+			factory(stub.pi, {
+				loadConfig: () =>
+					makeCfg({
+						showNamingCost: true,
+						surfaces: { renamePiSessionInNonTuiModes: true },
+					}),
+			});
+			const ctx = makeRenameCtx(stub, {
+				responses: [{ text: GOOD_NAMES, usage: USAGE_A }],
+				mode: "print",
+			});
+			await handler(stub, "input")(
+				{ source: "user", text: "hello world" },
+				ctx,
+			);
+			assert.equal(entriesOfType(stub, USAGE_TYPE).length, 1);
+			assert.deepEqual(stub.statuses, []);
+		},
+	);
+
+	await check(
+		"status: the slot is cleared when showNamingCost is off",
+		async () => {
+			const stub = makeStub();
+			factory(stub.pi, {
+				loadConfig: () => makeCfg({ showNamingCost: false }),
+			});
+			const ctx = makeRenameCtx(stub, {
+				responses: [{ text: GOOD_NAMES, usage: USAGE_A }],
+			});
+			await handler(stub, "input")(
+				{ source: "user", text: "hello world" },
+				ctx,
+			);
+			assert.deepEqual(stub.statuses, [{ key: STATUS_KEY, text: undefined }]);
+		},
+	);
+
+	await check(
+		"status: a restored ledger is re-published on session_start",
+		async () => {
+			const stub = makeStub();
+			factory(stub.pi, { loadConfig: () => makeCfg({ showNamingCost: true }) });
+			// What a previous session left in the transcript (e.g. before a reload).
+			stub.entries.push(usageEntry(USAGE_A), usageEntry(USAGE_B));
+			await handler(stub, "session_start")(
+				{ reason: "resume" },
+				makeRenameCtx(stub, { responses: [] }),
+			);
+			assert.deepEqual(stub.statuses, [
+				{ key: STATUS_KEY, text: "naming $0.0034" },
+			]);
+		},
+	);
+
+	// ── 11. the transcript scan that restores the ledger ─────────────
+
+	await check(
+		"ledger: the transcript scan recovers calls, tokens, cost and the greeting marker",
+		async () => {
+			const { createState, restoreTranscriptState } = (await import(
+				pathToFileURL(join(tmpDir, "state.js")).href
+			)) as typeof import("../state.ts");
+			const entries = [
+				usageEntry(USAGE_A),
+				usageEntry(USAGE_B),
+				{
+					type: "custom",
+					customType: GREETING_TYPE,
+					data: {
+						at: "2026-02-01T00:00:00.000Z",
+						model: "openrouter/nano",
+						effort: "off",
+						override: false,
+					},
+				},
+				userMessageEntry("hi"),
+			];
+			const state = createState();
+			const restored = restoreTranscriptState(
+				{ sessionManager: { getEntries: () => entries } } as never,
+				state,
+			);
+			assert.equal(state.namingCalls, 2);
+			// 1200+80+200+0 then 800+40+0+120
+			assert.equal(state.namingTokens, 2440);
+			assert.equal(state.namingCost.toFixed(4), "0.0034");
+			assert.equal(restored.hasGreeting, true);
+		},
+	);
+
+	await check(
+		"ledger: a session recorded before the ledger restores zero spend",
+		async () => {
+			const { createState, restoreTranscriptState } = (await import(
+				pathToFileURL(join(tmpDir, "state.js")).href
+			)) as typeof import("../state.ts");
+			const entries = [
+				{
+					type: "custom",
+					customType: "pi-auto-name",
+					data: { sessionName: "old name", at: "2026-01-01T00:00:00.000Z" },
+				},
+				userMessageEntry("hi"),
+			];
+			const state = createState();
+			const restored = restoreTranscriptState(
+				{ sessionManager: { getEntries: () => entries } } as never,
+				state,
+			);
+			assert.equal(state.namingCalls, 0);
+			assert.equal(state.namingTokens, 0);
+			assert.equal(state.namingCost, 0);
+			assert.equal(state.lastAutoName, "old name");
+			assert.equal(restored.hasGreeting, false);
+		},
+	);
 }
