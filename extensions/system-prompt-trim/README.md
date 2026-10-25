@@ -14,6 +14,14 @@ section the running install actually renders, so a pi release that adds a topic,
 rewrites the rules, or an install variant that appends a caveat — Pi-Bolt's
 `pi-bolt update` note, for instance — keeps its wording and stays reachable.
 
+**A pi update does not cold-start your conversation's prompt cache.** The
+skill's path is keyed by install — `pi-coding-agent` for pi, `pi-bolt` for
+Pi-Bolt — and not by pi's version, so an upgrade rewrites the skill's body
+while the prompt and the location it advertises hold still, and the provider's
+cached prefix survives the upgrade. A version-keyed path would move on every
+release, invalidating that prefix for the rest of the conversation — a cost far
+larger than this extension saves. See [The generated skill](#the-generated-skill).
+
 ## Install
 
 ```bash
@@ -99,12 +107,13 @@ written only when its content changes:
   must not share one file: the body is install-specific instruction, and the
   model reads it later in the turn, so the last writer would hand a Pi-Bolt
   session pi's transcription — dropping the `do not suggest pi update` caveat —
-  or the reverse. The id carries no version, because only the *path* is prompt
-  state: brew's Cellar, an npx or pnpm store and a dev checkout all end in
-  `pi-coding-agent`, and a `pi-bolt-<platform>-<arch>` bundle is `pi-bolt`, so a
-  pi update rewrites the body and leaves the prompt untouched. (Two *versions*
-  of the same install do share one file, so for the few turns in which both run,
-  the last writer's body wins — the paths differ, the topics barely do.)
+  or the reverse. The id carries no version, and that is the cache benefit:
+  only the *path* is prompt state, so brew's Cellar, an npx or pnpm store and a
+  dev checkout all end in `pi-coding-agent`, and a `pi-bolt-<platform>-<arch>`
+  bundle is `pi-bolt` — a pi update rewrites the body while the prompt, and so
+  the provider's cached prefix, stays byte-identical. (Two *versions* of the
+  same install do share one file, so for the few turns in which both run, the
+  last writer's body wins — the paths differ, the topics barely do.)
 - **Not `~/.pi/agent/skills`.** That directory is scanned and listed, so a
   generated skill there would show up in pi's own skill diagnostics and collide
   by name with a user's `pi-docs`; `cache/` is neither scanned nor listed. It
