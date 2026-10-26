@@ -77,8 +77,10 @@ stops working but nothing else breaks.
   (search box, dialogs), stock pi suppression applies.
 - The bar covers the top transcript row while shown.
 - Message offsets are re-measured whenever content height changes (e.g.
-  while a response streams in), which adds one extra render pass of the
-  transcript per such frame; between those frames everything is cached.
+  while a response streams in). The walk renders each message component
+  individually instead of one chat-block render, so that cost grows with
+  transcript length on every frame where the cache misses — which is exactly
+  while streaming. Between those frames everything is cached.
 - Transcript rebuilds (`/tree` navigation, compaction, session load) swap
   the transcript container's children array wholesale; the offset cache
   keys on that identity, so the bar re-derives immediately from whatever

@@ -49,6 +49,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import {
 	type Component,
+	Container,
 	type OverlayHandle,
 	type OverlayOptions,
 	type TUI,
@@ -121,17 +122,47 @@ function measureLines(component: unknown, width: number): number {
 	}
 }
 
-/** Plain pi-tui Container check. UserMessageComponent extends Container —
- *  always test for the message component BEFORE recursing into containers. */
-function isPlainContainer(
+/** The children array of a pi-tui Container whose lines are its children's,
+ *  concatenated: Container itself, or a subclass that only overrides
+ *  bookkeeping (Pi-Bolt's TranscriptContainer filters invalidate()). Tested
+ *  by class and by the render methods it keeps rather than by class name, so
+ *  a subclass pi grows for its own rendering stays opaque — its lines are then
+ *  measured as one block instead of being recomputed from children that don't
+ *  add up to them. Returns the array rather than a boolean because reading
+ *  `children` is not free under Pi-Bolt: its getter marks the container dirty
+ *  in its parent (defeating incremental line reuse), so each visit reads it
+ *  once. UserMessageComponent extends Container — always test for the message
+ *  component BEFORE recursing into containers. */
+function plainContainerChildren(
 	value: unknown,
-): value is { children: readonly unknown[] } {
-	const name = (value as { constructor?: { name?: string } } | undefined)
-		?.constructor?.name;
-	return (
-		name === "Container" &&
-		Array.isArray((value as { children?: unknown }).children)
-	);
+): readonly unknown[] | undefined {
+	if (value instanceof Container) {
+		if ((value as { render?: unknown }).render !== Container.prototype.render)
+			return undefined;
+		// Pi-Bolt's Container.render() is literally renderShared(width).slice(),
+		// so a subclass that overrides renderShared keeps the base render() and
+		// passes the check above while painting its own lines — that is what
+		// this second check catches. Stock pi-tui has no renderShared, so the
+		// check is skipped there.
+		const shared = (Container.prototype as { renderShared?: unknown })
+			.renderShared;
+		if (
+			shared !== undefined &&
+			(value as { renderShared?: unknown }).renderShared !== shared
+		)
+			return undefined;
+	} else {
+		// Cross-copy fallback: a second pi-tui copy in the host (Pi-Bolt bundles
+		// its own) fails instanceof for what is still a plain Container. Only
+		// the class name identifies it then — no subclass carries "Container" —
+		// and the render checks above compare against THIS copy's prototype, so
+		// they cannot apply across copies.
+		const name = (value as { constructor?: { name?: string } } | undefined)
+			?.constructor?.name;
+		if (name !== "Container") return undefined;
+	}
+	const children = (value as { children?: unknown }).children;
+	return Array.isArray(children) ? children : undefined;
 }
 
 /** One user message located in document coordinates (end is exclusive). */
@@ -177,10 +208,13 @@ function collectUserAnchors(
 				});
 			}
 			offset += height;
-		} else if (isPlainContainer(child)) {
-			offset = collectUserAnchors(child.children, width, offset, found);
 		} else {
-			offset += measureLines(child, width);
+			const nested = plainContainerChildren(child);
+			if (nested !== undefined) {
+				offset = collectUserAnchors(nested, width, offset, found);
+			} else {
+				offset += measureLines(child, width);
+			}
 		}
 	}
 	return offset;
@@ -258,7 +292,11 @@ export default function stickyLastPrompt(pi: ExtensionAPI): void {
 	/** Anchor cache keyed by everything that moves content: width, height,
 	 *  and the document's children identity — transcript rebuilds (/tree
 	 *  navigation, compaction, session load) go through Container.clear(),
-	 *  which replaces that array wholesale even at identical heights. */
+	 *  which replaces that array wholesale even at identical heights. Known
+	 *  gap: a rebuild that clears only a NESTED chat container (Pi-Bolt's
+	 *  TranscriptContainer) leaves this key untouched, so the cache can keep
+	 *  labels from the old branch when the height matches — stock pi 1.4 has
+	 *  the same gap. */
 	let anchorCache: {
 		width: number;
 		contentHeight: number | undefined;
