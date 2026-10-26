@@ -5,6 +5,22 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2026-10-26
+
+### Changed
+
+- `systemPromptOptions` is read through pi 1.4's own types
+  (`NormalizedBuildSystemPromptOptions`, `Skill`) instead of an `as unknown as`
+  cast and duplicate local `SkillEntry`/`PromptOptions` shapes, so an upstream
+  rename is a typecheck failure rather than a silent no-op. The runtime guards
+  stay: a build without the named-section map or skill list is still left
+  exactly as pi built it, a no-op rather than a throw.
+- The pushed `pi-docs` skill entry's `sourceInfo` is built by
+  `createSyntheticSourceInfo()` with `scope: "temporary"` and
+  `origin: "top-level"` — the file is a regenerated cache under pi's agent dir —
+  instead of a hand-built `{path, source: "extension", scope: "path",
+  origin: "extension"}`.
+
 ## [0.1.0] - 2026-10-21
 
 Initial release: pi's built-in `docs` system-prompt section is transcribed into a
