@@ -5,6 +5,44 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-10-26
+
+### Added
+
+- `autoRename.showNamingGreeting` (default `true`) appends one dim startup
+  transcript line naming the model the next naming call will actually use —
+  marked `(override)` when `autoRename.namingModel` supplied it instead of the
+  session model — and the configured `namingThinking` verbatim. `effort: off`
+  renders as `off` rather than as "no reasoning": it means no explicit level is
+  sent, and some OpenAI reasoning models still reason at their own default. The
+  line is a custom session entry, so it is never sent to the model and costs no
+  context; it is written once per session (a resumed session that already
+  carries one stays untouched) and is deliberately not refreshed by
+  `/auto-rename model`, which remains authoritative.
+- `autoRename.showNamingCost` (default `true`) publishes the session's
+  cumulative naming cost in the keyed footer slot `auto-rename`, visible in
+  pi's built-in footer and in footer-template's `{extensionStatuses}`. The
+  figure uses four decimals with a `<$0.0001` floor, because a single naming
+  call lands far below pi's 3-decimal session-cost precision and `$0.000` would
+  read as free. Nothing appears until a cost is actually incurred; a call that
+  cost `0` — a subscription-covered or unpriced model — shows no figure even
+  though tokens were spent.
+- Spend is accumulated from pi-ai's own `usage.cost.total` (raw USD) and
+  persisted as one small `pi-auto-name:usage` session entry per billed naming
+  run, so it survives `/reload` and resume and is re-published to the footer at
+  session start. pi's own session cost total still excludes this spend — an
+  extension cannot append usage entries — so the footer cost, `/session` stats
+  and HTML exports under-report by exactly the amount the new status shows.
+
+### Changed
+
+- Both display switches are gated on `ctx.mode === "tui"`: a headless or
+  subagent session neither writes display entries into its session file nor
+  claims a footer slot it cannot show.
+- The extension now needs pi-ai ≥ 1.4 at runtime, where `completeOnce` builds
+  its request context with pi-ai's `normalizeContext()`; `peerDependencies`
+  stay `"*"`.
+
 ## [0.2.1] - 2026-10-01
 
 ### Fixed
