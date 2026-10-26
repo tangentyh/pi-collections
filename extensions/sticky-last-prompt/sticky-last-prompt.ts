@@ -128,39 +128,33 @@ function measureLines(component: unknown, width: number): number {
  *  by class and by the render methods it keeps rather than by class name, so
  *  a subclass pi grows for its own rendering stays opaque — its lines are then
  *  measured as one block instead of being recomputed from children that don't
- *  add up to them. Returns the array rather than a boolean because reading
- *  `children` is not free under Pi-Bolt: its getter marks the container dirty
- *  in its parent (defeating incremental line reuse), so each visit reads it
- *  once. UserMessageComponent extends Container — always test for the message
+ *  add up to them. Requiring this copy's class identity (not a name) means a
+ *  duplicate pi-tui copy would fail everywhere and the bar would silently
+ *  disappear, where the old name test survived it — both hosts share one copy
+ *  today, and the render checks below can only compare within one copy anyway.
+ *  Returns the array rather than a boolean because reading `children` is not
+ *  free under Pi-Bolt: its getter marks the container dirty in its parent
+ *  (defeating incremental line reuse), so each visit reads it once.
+ *  UserMessageComponent extends Container — always test for the message
  *  component BEFORE recursing into containers. */
 function plainContainerChildren(
 	value: unknown,
 ): readonly unknown[] | undefined {
-	if (value instanceof Container) {
-		if ((value as { render?: unknown }).render !== Container.prototype.render)
-			return undefined;
-		// Pi-Bolt's Container.render() is literally renderShared(width).slice(),
-		// so a subclass that overrides renderShared keeps the base render() and
-		// passes the check above while painting its own lines — that is what
-		// this second check catches. Stock pi-tui has no renderShared, so the
-		// check is skipped there.
-		const shared = (Container.prototype as { renderShared?: unknown })
-			.renderShared;
-		if (
-			shared !== undefined &&
-			(value as { renderShared?: unknown }).renderShared !== shared
-		)
-			return undefined;
-	} else {
-		// Cross-copy fallback: a second pi-tui copy in the host (Pi-Bolt bundles
-		// its own) fails instanceof for what is still a plain Container. Only
-		// the class name identifies it then — no subclass carries "Container" —
-		// and the render checks above compare against THIS copy's prototype, so
-		// they cannot apply across copies.
-		const name = (value as { constructor?: { name?: string } } | undefined)
-			?.constructor?.name;
-		if (name !== "Container") return undefined;
-	}
+	if (!(value instanceof Container)) return undefined;
+	if ((value as { render?: unknown }).render !== Container.prototype.render)
+		return undefined;
+	// Pi-Bolt's Container.render() is literally renderShared(width).slice(),
+	// so a subclass that overrides renderShared keeps the base render() and
+	// passes the check above while painting its own lines — that is what this
+	// second check catches. Stock pi-tui has no renderShared, so the check is
+	// skipped there.
+	const shared = (Container.prototype as { renderShared?: unknown })
+		.renderShared;
+	if (
+		shared !== undefined &&
+		(value as { renderShared?: unknown }).renderShared !== shared
+	)
+		return undefined;
 	const children = (value as { children?: unknown }).children;
 	return Array.isArray(children) ? children : undefined;
 }

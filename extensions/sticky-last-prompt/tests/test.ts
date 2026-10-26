@@ -847,61 +847,6 @@ async function runTests(
 			"the later nested prompt doesn't leak into the pin",
 		);
 
-		// ── cross-copy fallback ─────────────────────────────────
-		// A duplicate pi-tui copy in the host (Pi-Bolt bundles its own) fails
-		// instanceof for what is still a plain Container. Only the class name
-		// identifies it then — no subclass carries "Container" — which is the
-		// tolerance the old class-name test had. A class expression named
-		// Container stands in for that copy: not our class, same name, lines are
-		// its children's.
-		{
-			const ContainerCopy = class Container {
-				children: Component[] = [];
-				addChild(child: Component): void {
-					this.children.push(child);
-				}
-				render(width: number): string[] {
-					return this.children.flatMap((child) => child.render(width));
-				}
-				invalidate(): void {}
-			};
-			const padRows = 5;
-			const foreignChat = new ContainerCopy();
-			foreignChat.addChild(lines(padRows, "pad-x"));
-			foreignChat.addChild(
-				new UserMessageComponent("prompt in a foreign copy"),
-			);
-			foreignChat.addChild(lines(30, "tail-x"));
-			const foreignDoc = new Container();
-			foreignDoc.addChild(foreignChat); // nested, so the walk must recurse into it
-			const foreignView = new ScrollView(foreignDoc, {
-				primary: true,
-				scrollbar: "always",
-			});
-			nestedTui.setLayoutRoot(foreignView);
-			nestedTui.renderNow(true);
-
-			foreignView.scrollTo(contentHeightOf(foreignView), {
-				disableFollow: true,
-			});
-			nestedTui.renderNow(true);
-			assert.match(
-				nestedBarText(),
-				/prompt in a foreign copy/,
-				"a same-named Container from another pi-tui copy is walked",
-			);
-			(
-				nestedTui as unknown as {
-					handleViewportInput(data: string): unknown;
-				}
-			).handleViewportInput("\x1b[<0;11;1M");
-			assert.equal(
-				foreignView.scrollTop,
-				padRows - 1,
-				"offsets below a foreign-copy container line up",
-			);
-		}
-
 		await nestedHandlers["session_shutdown"]({}, nestedCtx);
 		nestedTui.stop();
 	}
