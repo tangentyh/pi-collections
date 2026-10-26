@@ -741,6 +741,337 @@ async function runTests(
 		skillTui.stop();
 	}
 
+	// ── prompts nested in a Container subclass ─────────────────────
+	// Pi-Bolt (ahead-of-time build of pi) groups the chat in a Container
+	// subclass, TranscriptContainer, that only filters invalidate(); for the
+	// class-name test the change replaces, the constructor name was the only
+	// thing that mattered, so a bare subclass is the same case. Prompts below
+	// it must still be found and pinned in document order.
+	{
+		class ChatLike extends Container {}
+		const nestedTui = new TuiAltScreen(fakeTerminal);
+		const nestedHandlers: Record<string, (...args: any[]) => unknown> = {};
+		const nestedDoc = new Container();
+		const header = lines(3, "header");
+		const chat = new ChatLike();
+		const nestedSpacer = lines(5, "pad-n");
+		const nestedA = new UserMessageComponent("nested first question");
+		const nestedFiller = lines(30, "filler-n");
+		const nestedB = new UserMessageComponent("nested second question");
+		const nestedTail = lines(25, "tail-n");
+		chat.addChild(nestedSpacer);
+		chat.addChild(nestedA);
+		chat.addChild(nestedFiller);
+		chat.addChild(nestedB);
+		chat.addChild(nestedTail);
+		nestedDoc.addChild(header);
+		nestedDoc.addChild(chat);
+		const nestedView = new ScrollView(nestedDoc, {
+			primary: true,
+			scrollbar: "always",
+		});
+		nestedTui.setLayoutRoot(nestedView);
+		nestedTui.start();
+		let nestedFactory: WidgetFactory | undefined;
+		const nestedCtx = {
+			mode: "tui",
+			hasUI: true,
+			ui: {
+				setWidget: (_id: string, fn?: WidgetFactory) => {
+					nestedFactory = fn;
+				},
+			},
+		};
+		stickyLastPrompt({
+			on: (event: string, handler: (...args: any[]) => unknown) => {
+				nestedHandlers[event] = handler;
+			},
+		} as unknown as ExtensionAPI);
+		await nestedHandlers["session_start"](
+			{ type: "session_start", reason: "startup" },
+			nestedCtx,
+		);
+		nestedFactory!(nestedTui, fakeTheme);
+		nestedTui.renderNow(true);
+
+		const nestedBarText = (): string => {
+			const stack = (
+				nestedTui as unknown as {
+					overlayStack?: readonly { component?: unknown }[];
+				}
+			).overlayStack;
+			const bar = stack
+				?.map((entry) => entry.component)
+				.find(
+					(c): c is BarLike =>
+						!!c && typeof (c as BarLike).renderedRows === "number",
+				);
+			assert.ok(bar, "nested scenario: bar overlay present");
+			return stripAnsi(bar.render(innerWidth).join(""));
+		};
+		const nestedScrollTo = (top: number) => {
+			nestedView.scrollTo(top, { disableFollow: true });
+			nestedTui.renderNow(true);
+		};
+
+		const startNestedA = linesOf(header) + linesOf(nestedSpacer);
+		const startNestedB =
+			startNestedA + linesOf(nestedA) + linesOf(nestedFiller);
+
+		// Offsets are document-wide, so a click must land on the nested prompt
+		// itself, not on the block that holds it.
+		nestedScrollTo(contentHeightOf(nestedView)); // clamps to bottom
+		assert.match(
+			nestedBarText(),
+			/nested second question/,
+			"bottom pins the latest prompt inside a Container subclass",
+		);
+		(
+			nestedTui as unknown as { handleViewportInput(data: string): unknown }
+		).handleViewportInput("\x1b[<0;11;1M");
+		assert.equal(
+			nestedView.scrollTop,
+			Math.max(0, startNestedB - 1),
+			"click jumps to the nested prompt, offsets included",
+		);
+
+		nestedScrollTo(startNestedA + linesOf(nestedA));
+		assert.match(
+			nestedBarText(),
+			/nested first question/,
+			"scrolled-past nested prompt gets pinned",
+		);
+		assert.doesNotMatch(
+			nestedBarText(),
+			/nested second/,
+			"the later nested prompt doesn't leak into the pin",
+		);
+
+		await nestedHandlers["session_shutdown"]({}, nestedCtx);
+		nestedTui.stop();
+	}
+
+	// ── a Container subclass that paints its own lines ─────────────
+	// Recursing into a subclass that prepends a row of its own would drop that
+	// row from every offset below it and pin prompts held inside it as if the
+	// walk owned them; it must be measured as ONE block instead.
+	{
+		class BanneredContainer extends Container {
+			render(width: number): string[] {
+				return ["banner", ...super.render(width)];
+			}
+		}
+		const opaqueTui = new TuiAltScreen(fakeTerminal);
+		const opaqueHandlers: Record<string, (...args: any[]) => unknown> = {};
+		const opaqueDoc = new Container();
+		const opaqueHeader = lines(3, "header-o");
+		const bannered = new BanneredContainer();
+		const held = new UserMessageComponent("held inside the bannered block");
+		const heldFiller = lines(10, "filler-o");
+		bannered.addChild(held);
+		bannered.addChild(heldFiller);
+		opaqueDoc.addChild(opaqueHeader);
+		opaqueDoc.addChild(bannered);
+		opaqueDoc.addChild(new UserMessageComponent("sibling after the banner"));
+		opaqueDoc.addChild(lines(25, "tail-o"));
+		const opaqueView = new ScrollView(opaqueDoc, {
+			primary: true,
+			scrollbar: "always",
+		});
+		opaqueTui.setLayoutRoot(opaqueView);
+		opaqueTui.start();
+		let opaqueFactory: WidgetFactory | undefined;
+		const opaqueCtx = {
+			mode: "tui",
+			hasUI: true,
+			ui: {
+				setWidget: (_id: string, fn?: WidgetFactory) => {
+					opaqueFactory = fn;
+				},
+			},
+		};
+		stickyLastPrompt({
+			on: (event: string, handler: (...args: any[]) => unknown) => {
+				opaqueHandlers[event] = handler;
+			},
+		} as unknown as ExtensionAPI);
+		await opaqueHandlers["session_start"](
+			{ type: "session_start", reason: "startup" },
+			opaqueCtx,
+		);
+		opaqueFactory!(opaqueTui, fakeTheme);
+		opaqueTui.renderNow(true);
+
+		const opaqueBarText = (): string => {
+			const stack = (
+				opaqueTui as unknown as {
+					overlayStack?: readonly { component?: unknown }[];
+				}
+			).overlayStack;
+			const bar = stack
+				?.map((entry) => entry.component)
+				.find(
+					(c): c is BarLike =>
+						!!c && typeof (c as BarLike).renderedRows === "number",
+				);
+			assert.ok(bar, "bannered scenario: bar overlay present");
+			return stripAnsi(bar.render(innerWidth).join(""));
+		};
+		const opaqueScrollTo = (top: number) => {
+			opaqueView.scrollTo(top, { disableFollow: true });
+			opaqueTui.renderNow(true);
+		};
+
+		const bannerRows = 1; // BanneredContainer paints exactly one row of its own
+		const startSibling =
+			linesOf(opaqueHeader) + bannerRows + linesOf(held) + linesOf(heldFiller);
+
+		// The held prompt has scrolled entirely above the top edge, yet it is
+		// not a walk target: the block it sits in paints its own rows.
+		opaqueScrollTo(linesOf(opaqueHeader) + bannerRows + linesOf(held));
+		assert.equal(
+			opaqueBarText(),
+			"",
+			"a prompt inside a self-painting subclass is not pinned",
+		);
+
+		// …and the sibling prompt's offset includes the block's own banner row.
+		opaqueScrollTo(contentHeightOf(opaqueView)); // clamps to bottom
+		assert.match(
+			opaqueBarText(),
+			/sibling after the banner/,
+			"bottom pins the sibling prompt after the block",
+		);
+		(
+			opaqueTui as unknown as { handleViewportInput(data: string): unknown }
+		).handleViewportInput("\x1b[<0;11;1M");
+		assert.equal(
+			opaqueView.scrollTop,
+			Math.max(0, startSibling - 1),
+			"the sibling's offset includes the block's own banner row",
+		);
+
+		await opaqueHandlers["session_shutdown"]({}, opaqueCtx);
+		opaqueTui.stop();
+	}
+
+	// ── renderShared guard (the Pi-Bolt-only shape, simulated) ─────
+	// Pi-Bolt's Container.render() is renderShared(width).slice(), so a
+	// subclass overriding only renderShared keeps the base render() and would
+	// pass the render-identity check while painting its own lines. Stock pi-tui
+	// has no renderShared at all, so this scenario installs one on the
+	// prototype for its own duration (removed in finally) — without it the
+	// second guard would be unreachable here and never red.
+	{
+		const proto = Container.prototype as { renderShared?: unknown };
+		const hadOwnShared = Object.hasOwn(proto, "renderShared");
+		const savedShared = proto.renderShared;
+		try {
+			proto.renderShared = function baseRenderShared(): string[] {
+				return [];
+			};
+			class RepaintingContainer extends Container {
+				renderShared(): string[] {
+					return ["repainted"];
+				}
+			}
+			const sharedTui = new TuiAltScreen(fakeTerminal);
+			const sharedHandlers: Record<string, (...args: any[]) => unknown> = {};
+			const sharedDoc = new Container();
+			const sharedHeader = lines(3, "header-s");
+			const repainting = new RepaintingContainer();
+			const repainted = new UserMessageComponent(
+				"held inside the repainting block",
+			);
+			repainting.addChild(repainted);
+			repainting.addChild(lines(10, "filler-s"));
+			sharedDoc.addChild(sharedHeader);
+			sharedDoc.addChild(repainting);
+			sharedDoc.addChild(new UserMessageComponent("sibling after repaint"));
+			sharedDoc.addChild(lines(25, "tail-s"));
+			const sharedView = new ScrollView(sharedDoc, {
+				primary: true,
+				scrollbar: "always",
+			});
+			sharedTui.setLayoutRoot(sharedView);
+			sharedTui.start();
+			let sharedFactory: WidgetFactory | undefined;
+			const sharedCtx = {
+				mode: "tui",
+				hasUI: true,
+				ui: {
+					setWidget: (_id: string, fn?: WidgetFactory) => {
+						sharedFactory = fn;
+					},
+				},
+			};
+			stickyLastPrompt({
+				on: (event: string, handler: (...args: any[]) => unknown) => {
+					sharedHandlers[event] = handler;
+				},
+			} as unknown as ExtensionAPI);
+			await sharedHandlers["session_start"](
+				{ type: "session_start", reason: "startup" },
+				sharedCtx,
+			);
+			sharedFactory!(sharedTui, fakeTheme);
+			sharedTui.renderNow(true);
+
+			const sharedBarText = (): string => {
+				const stack = (
+					sharedTui as unknown as {
+						overlayStack?: readonly { component?: unknown }[];
+					}
+				).overlayStack;
+				const bar = stack
+					?.map((entry) => entry.component)
+					.find(
+						(c): c is BarLike =>
+							!!c && typeof (c as BarLike).renderedRows === "number",
+					);
+				assert.ok(bar, "renderShared scenario: bar overlay present");
+				return stripAnsi(bar.render(innerWidth).join(""));
+			};
+			const sharedScrollTo = (top: number) => {
+				sharedView.scrollTo(top, { disableFollow: true });
+				sharedTui.renderNow(true);
+			};
+
+			const heldHeight = linesOf(repainted);
+			const startSharedSibling = linesOf(sharedHeader) + heldHeight + 10;
+
+			// Same block semantics as the bannered subclass: a renderShared
+			// override makes the block opaque even though render() is the base one.
+			sharedScrollTo(linesOf(sharedHeader) + heldHeight);
+			assert.equal(
+				sharedBarText(),
+				"",
+				"a renderShared override keeps the block opaque",
+			);
+
+			sharedScrollTo(contentHeightOf(sharedView)); // clamps to bottom
+			assert.match(
+				sharedBarText(),
+				/sibling after repaint/,
+				"its sibling still pins from the block's measured height",
+			);
+			(
+				sharedTui as unknown as { handleViewportInput(data: string): unknown }
+			).handleViewportInput("\x1b[<0;11;1M");
+			assert.equal(
+				sharedView.scrollTop,
+				Math.max(0, startSharedSibling - 1),
+				"click lands the sibling prompt below the bar",
+			);
+
+			await sharedHandlers["session_shutdown"]({}, sharedCtx);
+			sharedTui.stop();
+		} finally {
+			if (hadOwnShared) proto.renderShared = savedShared;
+			else delete proto.renderShared;
+		}
+	}
+
 	// ── uninstall (session_shutdown) removes instance overrides ────
 	await handlers["session_shutdown"]({}, ctx);
 	assert.equal(
