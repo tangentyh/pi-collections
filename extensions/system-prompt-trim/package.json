@@ -1,6 +1,6 @@
 {
 	"name": "pi-system-prompt-trim",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"description": "Trim pi's own `docs` section out of every request: its doc paths, topic index and reading rules move into an on-demand `pi-docs` skill, and the always-on section is blank. Nothing else in the prompt is touched",
 	"keywords": [
 		"pi-package",
