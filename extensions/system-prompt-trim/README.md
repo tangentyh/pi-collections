@@ -22,6 +22,12 @@ cached prefix survives the upgrade. A version-keyed path would move on every
 release, invalidating that prefix for the rest of the conversation — a cost far
 larger than this extension saves. See [The generated skill](#the-generated-skill).
 
+The other direction does cost money: resuming the *same session* under a
+different install changes the path in the recorded prompt, so the cache breaks
+anyway. That one is outside this extension's control, so it says so at startup
+instead of leaving you to notice the bill — see
+[Resuming under another install](#resuming-under-another-install).
+
 ## Install
 
 ```bash
@@ -113,7 +119,9 @@ written only when its content changes:
   bundle is `pi-bolt` — a pi update rewrites the body while the prompt, and so
   the provider's cached prefix, stays byte-identical. (Two *versions* of the
   same install do share one file, so for the few turns in which both run, the
-  last writer's body wins — the paths differ, the topics barely do.)
+  last writer's body wins — the paths differ, the topics barely do.) The one
+  case where the path itself moves is a session resumed under another install;
+  see [Resuming under another install](#resuming-under-another-install).
 - **Not `~/.pi/agent/skills`.** That directory is scanned and listed, so a
   generated skill there would show up in pi's own skill diagnostics and collide
   by name with a user's `pi-docs`; `cache/` is neither scanned nor listed. It
@@ -127,6 +135,54 @@ written only when its content changes:
   description are constants, so the always-on skills section does not churn
   between machines. The body ends with the bullets exactly as pi rendered them.
 
+## Resuming under another install
+
+A session persists the prompt it sent: the first request as one system message
+holding every section, later changes as system messages that patch `sections`
+by name (pi's `docs/session-format.md` describes the entries). Replaying them in
+order yields the prompt the session recorded — and the `<skills>` section is
+part of it, absolute `pi-docs` path included.
+
+So resuming that session under the other install is the one case where this
+extension's own path change costs real money. The recorded prompt names
+`…/pi-coding-agent/pi-docs/SKILL.md`; this run advertises
+`…/pi-bolt/pi-docs/SKILL.md`; pi records the difference as a new section patch.
+The leading system prompt changes, and the provider's cached prefix is
+invalidated for the rest of the conversation — every later turn billed at full
+input price.
+
+`session_start` therefore replays the recorded prompt, compares that path with
+the one this run will advertise, and warns once when they differ:
+
+```
+This session was recorded by pi (pi-coding-agent) and is now running under
+Pi-Bolt (pi-bolt): the pi-docs skill path changed, so the provider's cached
+prompt prefix is invalidated for the rest of this conversation.
+```
+
+- **Triggered by what the session recorded, not by `reason`.** `pi -c`,
+  `pi --session <file>` and `pi --fork <file>` all report `reason: "startup"`
+  in pi 1.4.0, never `"resume"` (verified with a probe extension in print
+  mode); only a runtime session switch reports `"resume"`. Either way the
+  branch is the signal: no recorded system message, no warning — which is also
+  why a fresh session is silent.
+- **Only what it can substantiate.** It names the two installs when the two
+  paths carry different install ids, and names the two paths when the same
+  install moved (a different agent dir, say). The rest of the prompt can differ
+  for reasons nothing here can see — a pi upgrade's own section text, a
+  project's instructions — and a guessed cause is worse than silence.
+- **Silent whenever the evidence is missing.** An unreadable session, a branch
+  whose prompt it cannot replay, or a recorded `pi-docs` skill some other file
+  provides: none of those are evidence, so nothing is said.
+- **Free.** It reads entries and calls `ctx.ui.notify` once. No provider
+  request, no appended session entry, no change to the section it trims — and a
+  throw inside detection leaves the trim and the session exactly as they were.
+
+The comparison covers the one section whose content this extension owns. A
+prompt that changed for any other reason — pi upgrading its own sections, a new
+project skill — still breaks the cache without a warning from here; deriving
+pi's whole built-in prompt at `session_start` is more than this extension has.
+
 ## How it hooks in
 
 `before_agent_start` gives handlers the prompt's `name → text` section map and
@@ -136,8 +192,9 @@ is really on in the prompt it just rendered, and blanks `sections.docs`. pi
 persists the result as a normal section patch, so prompt caching and the
 transcript's structured prompt state are unaffected — given that the advertised
 location is the same on the next run, which is why the file lives in pi's own
-state directory rather than a temp one. (Returning `systemPrompt` instead would
-replace the whole prompt for the run — not what this extension wants.)
+state directory rather than a temp one, and why `session_start` warns when a
+resumed session recorded a different one. (Returning `systemPrompt` instead
+would replace the whole prompt for the run — not what this extension wants.)
 
 The source of truth is the rendered prompt, not a constant, so it **fails
 closed**, leaving pi's section exactly as built:

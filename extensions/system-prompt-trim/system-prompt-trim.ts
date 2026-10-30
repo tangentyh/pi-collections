@@ -9,14 +9,22 @@
  * The `docs` section is the only one trimmed. Other sections are left exactly as
  * pi built them: they carry standing instructions, not lookup data, so moving one
  * behind a skill would change behaviour on turns that never mention it.
+ *
+ * The skill's absolute path is prompt state, so resuming a session under a
+ * different install rewrites the `<skills>` section and invalidates the
+ * provider's cached prefix for the rest of the conversation.
+ * `promptCacheWarning` compares the path the session recorded with the one this
+ * run advertises, and the `session_start` handler says so once.
  */
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import {
 	createSyntheticSourceInfo,
 	type ExtensionAPI,
+	type ExtensionContext,
 	getAgentDir,
 	getPackageDir,
+	type SessionEntry,
 } from "@earendil-works/pi-coding-agent";
 
 export const SKILL_NAME = "pi-docs";
@@ -177,6 +185,15 @@ export interface DocsSkillDeps {
 	readFile?: (filePath: string) => string | undefined;
 	/** Write the file, creating parents; throws on failure. */
 	writeFile?: (filePath: string, content: string) => void;
+	/** The install this run belongs to; defaults to `installId()`. */
+	installId?: () => string;
+	/**
+	 * The session's recorded entries, replayed by
+	 * {@link replayPromptSections}; defaults to `ctx.sessionManager.getBranch()`.
+	 */
+	recordedEntries?: (
+		ctx: ExtensionContext,
+	) => readonly SessionEntry[] | undefined;
 }
 
 const SKILL_DIR_NAME = "pi-system-prompt-trim";
@@ -227,6 +244,136 @@ export function defaultSkillDir(install: string = installId()): string {
 	return join(getAgentDir(), "cache", SKILL_DIR_NAME, install);
 }
 
+/** The generated file's path for an install — the value `<skills>` advertises. */
+export function defaultSkillPath(install: string = installId()): string {
+	return join(defaultSkillDir(install), SKILL_NAME, "SKILL.md");
+}
+
+/** This extension's own generated file, with its install id captured. */
+const CACHE_SKILL_PATH = new RegExp(
+	`[/\\\\]cache[/\\\\]${SKILL_DIR_NAME}[/\\\\]([^/\\\\]+)[/\\\\]${SKILL_NAME}[/\\\\]SKILL\\.md$`,
+);
+
+/**
+ * The install id inside this extension's own cache path, or `undefined` when the
+ * path is not one of ours (a user's `pi-docs` skill, say) — in which case there
+ * is nothing this extension can substantiate, and it stays quiet.
+ */
+export function cacheInstallId(filePath: string): string | undefined {
+	return CACHE_SKILL_PATH.exec(filePath)?.[1];
+}
+
+/** The `<skill>` blocks of a rendered `skills` section. */
+const SKILL_BLOCK = /<skill>([\s\S]*?)<\/skill>/g;
+
+/** The five entities pi escapes in a rendered skill list. */
+const XML_ENTITIES: Record<string, string> = {
+	"&lt;": "<",
+	"&gt;": ">",
+	"&quot;": '"',
+	"&apos;": "'",
+	"&amp;": "&",
+};
+
+/**
+ * The `pi-docs` location a rendered or recorded `skills` section names, or
+ * `undefined` when it has no entry for this extension's skill.
+ *
+ * Matched as a whole `<skill>` block rather than "the first `<location>` after
+ * the name": a section pi shortened or a variant reshaped must not make this
+ * return the location of a different skill, because every byte of the path it
+ * returns ends up in the user-facing warning.
+ */
+export function recordedSkillPath(skillsSection: string): string | undefined {
+	for (const block of skillsSection.matchAll(SKILL_BLOCK)) {
+		if (!block[1].includes(`<name>${SKILL_NAME}</name>`)) continue;
+		const location = /<location>([^<]*)<\/location>/.exec(block[1])?.[1];
+		if (location === undefined) return undefined;
+		return location.replace(
+			/&(?:lt|gt|quot|apos|amp);/g,
+			(entity) => XML_ENTITIES[entity] ?? entity,
+		);
+	}
+	return undefined;
+}
+
+/**
+ * Replay the prompt sections a session recorded, from its system messages.
+ *
+ * pi's session format (docs/session-format.md) says it plainly: the first
+ * request persists one system message holding every prompt section, later
+ * changes persist as system messages that patch `sections` by name, and a
+ * `null` removes one. Replaying them in order yields the prompt the session
+ * recorded — there is no separate prompt-state entry. Compaction needs no
+ * special case: pi derives its `systemMessage` checkpoint from these same
+ * messages (`_restoreToolsFromTranscript`), so the fold already equals the
+ * checkpoint.
+ *
+ * `undefined` when the branch recorded no sections at all — a fresh session, or
+ * one older than system messages — which is a state this module cannot compare
+ * and so must not guess about.
+ */
+export function replayPromptSections(
+	entries: readonly SessionEntry[],
+): Record<string, string | null> | undefined {
+	const sections: Record<string, string | null> = {};
+	let recorded = false;
+	for (const entry of entries) {
+		if (entry.type !== "message") continue;
+		const message = entry.message;
+		if (message.role !== "system" || !message.sections) continue;
+		recorded = true;
+		for (const [name, text] of Object.entries(message.sections)) {
+			if (typeof text === "string") sections[name] = text;
+			else delete sections[name];
+		}
+	}
+	return recorded ? sections : undefined;
+}
+
+/** Friendly names for the installs this extension knows it ships under. */
+const INSTALL_LABELS: Record<string, string> = {
+	"pi-coding-agent": "pi",
+	"pi-bolt": "Pi-Bolt",
+};
+
+function installLabel(install: string): string {
+	const label = INSTALL_LABELS[install];
+	return label ? `${label} (${install})` : install;
+}
+
+/**
+ * What to tell the user about a resumed session whose recorded prompt carries a
+ * different `pi-docs` path than this run will advertise, or `undefined` when the
+ * two agree or the recorded prompt says nothing about this extension's skill.
+ *
+ * Only the one section whose content this extension owns is compared. The rest
+ * of the prompt can differ for reasons nothing here can see — a pi upgrade's own
+ * section text, a project's instructions — and guessing at a cause is worse than
+ * silence. Both named causes are read off the two paths themselves: the install
+ * id inside this extension's cache directory, and the path when it moved under
+ * the same install (a different agent dir, say).
+ */
+export function promptCacheWarning(
+	recorded: Record<string, string | null> | undefined,
+	install: string,
+): string | undefined {
+	const skills = recorded?.skills;
+	if (typeof skills !== "string") return undefined;
+	const recordedPath = recordedSkillPath(skills);
+	if (recordedPath === undefined) return undefined;
+	const currentPath = defaultSkillPath(install);
+	if (recordedPath === currentPath) return undefined;
+
+	const recordedInstall = cacheInstallId(recordedPath);
+	const effect =
+		"the provider's cached prompt prefix is invalidated for the rest of this conversation";
+	if (recordedInstall !== undefined && recordedInstall !== install) {
+		return `This session was recorded by ${installLabel(recordedInstall)} and is now running under ${installLabel(install)}: the ${SKILL_NAME} skill path changed, so ${effect}. Resume it under ${installLabel(recordedInstall)} to keep the cache.`;
+	}
+	return `This session recorded the ${SKILL_NAME} skill at ${recordedPath} and this run advertises ${currentPath}: the skill path changed, so ${effect}.`;
+}
+
 function defaultReadFile(filePath: string): string | undefined {
 	try {
 		return readFileSync(filePath, "utf8");
@@ -247,6 +394,29 @@ export function registerDocsSkill(
 	const skillDir = deps.skillDir ?? (() => defaultSkillDir());
 	const readFile = deps.readFile ?? defaultReadFile;
 	const writeFile = deps.writeFile ?? defaultWriteFile;
+	const install = deps.installId ?? installId;
+	const recordedEntries =
+		deps.recordedEntries ??
+		((ctx: ExtensionContext) => ctx.sessionManager.getBranch());
+
+	// A resumed session carries the prompt it recorded in its system messages. If
+	// it names a different `pi-docs` path than this run will, the next request
+	// rewrites the prompt and the provider's cached prefix is gone for good. Say so
+	// once. Detection only reads entries and writes one notification: one shot,
+	// no provider request, no appended entry, and a throw leaves the session and
+	// the trim below exactly as they were.
+	pi.on("session_start", (_event, ctx) => {
+		try {
+			const warning = promptCacheWarning(
+				replayPromptSections(recordedEntries(ctx) ?? []),
+				install(),
+			);
+			if (warning !== undefined) ctx.ui.notify(warning, "warning");
+		} catch {
+			// Best effort by construction: an unreadable or unexpected session must
+			// never cost the user their run, or the trim, over a warning.
+		}
+	});
 
 	pi.on("before_agent_start", (event) => {
 		// pi 1.4 types this as the normalized name → text map and skill list; the
@@ -276,6 +446,8 @@ export function registerDocsSkill(
 		if (!Array.isArray(skills)) return;
 
 		const split = splitDocsSection(section);
+		// With the default `skillDir` this is `defaultSkillPath()`, the location the
+		// resume warning compares the session's recorded path against.
 		const filePath = join(skillDir(paths), SKILL_NAME, "SKILL.md");
 		try {
 			const body = buildSkillFile(split);
