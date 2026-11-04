@@ -22,6 +22,12 @@ cached prefix survives the upgrade. A version-keyed path would move on every
 release, invalidating that prefix for the rest of the conversation — a cost far
 larger than this extension saves. See [The generated skill](#the-generated-skill).
 
+The other direction does cost money: resuming the *same session* under a
+different install changes the path in the recorded prompt, so the cache breaks
+anyway. That one is outside this extension's control, so it says so at startup
+instead of leaving you to notice the bill — see
+[Resuming under another install](#resuming-under-another-install).
+
 ## Install
 
 ```bash
@@ -126,6 +132,42 @@ written only when its content changes:
 - **Static frontmatter.** Only the body is install-specific; the name and
   description are constants, so the always-on skills section does not churn
   between machines. The body ends with the bullets exactly as pi rendered them.
+
+## Resuming under another install
+
+A session persists the prompt it sent: the first request as one system message
+holding every section, later changes as system messages that patch `sections`
+by name (pi's `docs/session-format.md`). The `<skills>` section is part of that
+prompt, absolute `pi-docs` path included.
+
+So resuming a session under the other install is the one case where this
+extension's own path change costs real money: the recorded prompt names
+`…/pi-coding-agent/pi-docs/SKILL.md`, this run advertises `…/pi-bolt/…`, pi
+records the difference as a section patch, and the provider's cached prefix is
+invalidated for the rest of the conversation.
+
+`session_start` replays the recorded prompt, compares that path with this run's,
+and warns once when they differ:
+
+```
+This session was recorded by pi (pi-coding-agent) and is now running under
+Pi-Bolt (pi-bolt): the pi-docs skill path changed, so the provider's cached
+prompt prefix is invalidated for the rest of this conversation.
+```
+
+- **The branch is the signal, not `reason`.** `pi -c`, `pi --session <file>`
+  and `pi --fork <file>` all report `reason: "startup"` in pi 1.4.0 (probe
+  extension, print mode); only a runtime switch says `"resume"`. No recorded
+  system message means no warning — which is why a fresh session is silent.
+- **Only what it can substantiate.** It names the two installs when the paths
+  carry different ids, and the two paths when the same install moved (another
+  agent dir, say). A prompt that changed for any other reason — a pi upgrade's
+  own sections, a new project skill — still breaks the cache, with no warning
+  from here.
+- **Free, and fail-closed.** It reads entries and calls `ctx.ui.notify` once:
+  no provider request, no appended entry, no change to the trimmed section. An
+  unreadable session, or a recorded `pi-docs` some other file provides, says
+  nothing.
 
 ## How it hooks in
 

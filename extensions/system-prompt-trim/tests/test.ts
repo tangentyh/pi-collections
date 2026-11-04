@@ -6,6 +6,9 @@
 //   - PIBOLT_LINE is the caveat Pi-Bolt appends to that section (its compiled
 //     `promptSections.docs`). It is the regression this suite exists for: an
 //     earlier version rebuilt the section from a template and dropped it.
+//   - RECORDED_SKILLS and PIBOLT_SKILLS are the `<skills>` sections a real pi
+//     1.4.0 session recorded, before and after a resume under `pi-bolt` (see
+//     the fixture below).
 //
 // Node ≥ 23.6 strips this file's (erasable-only) TypeScript natively, so the
 // extension module next to it is imported directly.
@@ -17,7 +20,11 @@ import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type {
+	ExtensionAPI,
+	SessionEntry,
+	SessionStartEvent,
+} from "@earendil-works/pi-coding-agent";
 import {
 	formatSkillsForPrompt,
 	getAgentDir,
@@ -28,12 +35,15 @@ import {
 	BLANK_SECTION,
 	buildDocsSection,
 	buildSkillFile,
+	cacheInstallId,
 	type DocsSkillDeps,
 	defaultSkillDir,
 	extractDocsPaths,
 	extractDocsSection,
 	installId,
+	recordedSkillPath,
 	registerDocsSkill,
+	replayPromptSections,
 	SKILL_DESCRIPTION,
 	SKILL_NAME,
 	splitDocsSection,
@@ -94,6 +104,76 @@ const PIBOLT_PROMPT = promptWith(PIBOLT_SECTION);
 const PI_TEXT = extractDocsSection(PROMPT) as string;
 const PIBOLT_TEXT = extractDocsSection(PIBOLT_PROMPT) as string;
 
+// ── pasted truth: the prompt state a real session recorded ────────────
+// Copied out of a pi 1.4.0 session file (agent dir /tmp/pi-cacheprobe/agent):
+// its first system message, then the `<skills>` patch pi appended when the
+// session was resumed with PI_PACKAGE_DIR=/tmp/pi-cacheprobe/pi-bolt-darwin-arm64.
+// Both `skills` strings are byte-for-byte as recorded; other sections are
+// omitted because only `sections` is replayed.
+const RECORDED_AGENT_DIR = "/tmp/pi-cacheprobe/agent";
+
+const RECORDED_SKILLS = `<skills>
+The following skills provide specialized instructions for specific tasks.
+Use the read tool to load a skill's file when the task matches its description.
+When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.
+
+<available_skills>
+  <skill>
+    <name>pi-docs</name>
+    <description>Index of pi&apos;s own documentation — the README, docs/ and examples/ directories that ship with the pi install. Use when the user asks about pi itself (its CLI, extensions, skills, prompt templates, themes, TUI, providers, models, MCP servers, codemode, settings, sessions, or SDK), or when working on pi or on a pi extension.</description>
+    <location>/tmp/pi-cacheprobe/agent/cache/pi-system-prompt-trim/pi-coding-agent/pi-docs/SKILL.md</location>
+  </skill>
+</available_skills>
+</skills>`;
+
+const PIBOLT_SKILLS = `<skills>
+The following skills provide specialized instructions for specific tasks.
+Use the read tool to load a skill's file when the task matches its description.
+When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.
+
+<available_skills>
+  <skill>
+    <name>pi-docs</name>
+    <description>Index of pi&apos;s own documentation — the README, docs/ and examples/ directories that ship with the pi install. Use when the user asks about pi itself (its CLI, extensions, skills, prompt templates, themes, TUI, providers, models, MCP servers, codemode, settings, sessions, or SDK), or when working on pi or on a pi extension.</description>
+    <location>/tmp/pi-cacheprobe/agent/cache/pi-system-prompt-trim/pi-bolt/pi-docs/SKILL.md</location>
+  </skill>
+</available_skills>
+</skills>`;
+
+/** A system message as pi recorded it; only `sections` is replayed. */
+function systemEntry(sections: Record<string, string | null>): SessionEntry {
+	return {
+		type: "message",
+		id: "df0186bf",
+		parentId: "da7ac71b",
+		timestamp: "2026-10-30T17:42:02.783Z",
+		message: {
+			role: "system",
+			content: "",
+			sections,
+			timestamp: 1793382122783,
+		},
+	};
+}
+
+/** The session's first request: every section, with the pi skill path. */
+const RECORDED_ENTRIES: SessionEntry[] = [
+	systemEntry({
+		preamble:
+			"You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.",
+		skills: RECORDED_SKILLS,
+	}),
+];
+
+/**
+ * What the session recorded after the pi-bolt resume: the first prompt plus the
+ * one-section patch pi appended.
+ */
+const PIBOLT_RECORDED = [
+	...RECORDED_ENTRIES,
+	systemEntry({ skills: PIBOLT_SKILLS }),
+];
+
 // ── fakes ─────────────────────────────────────────────────────────────
 
 function freshOptions(
@@ -152,6 +232,28 @@ function renderedPrompt(
 }
 
 /**
+ * Register the extension and collect its handlers by event name, the way pi's
+ * runner keeps one list per event.
+ */
+function registerExtension(
+	deps: DocsSkillDeps,
+): Map<string, Array<(event: never, ctx: never) => unknown>> {
+	const handlers = new Map<
+		string,
+		Array<(event: never, ctx: never) => unknown>
+	>();
+	const pi = {
+		on(event: string, handler: (event: never, ctx: never) => unknown) {
+			const list = handlers.get(event) ?? [];
+			list.push(handler);
+			handlers.set(event, list);
+		},
+	} as unknown as ExtensionAPI;
+	registerDocsSkill(pi, deps);
+	return handlers;
+}
+
+/**
  * Dispatches `before_agent_start` the way pi's runner does: handlers see one
  * mutable options object, and `event.systemPrompt` re-renders from it.
  */
@@ -164,15 +266,7 @@ function runHandler({
 	options?: Record<string, unknown>;
 	systemPrompt?: string;
 } = {}): Record<string, unknown> {
-	const handlers: Array<
-		(event: { systemPrompt: string; systemPromptOptions: unknown }) => unknown
-	> = [];
-	const pi = {
-		on(_event: string, handler: (event: never) => unknown) {
-			handlers.push(handler as never);
-		},
-	} as unknown as ExtensionAPI;
-	registerDocsSkill(pi, deps);
+	const handlers = registerExtension(deps).get("before_agent_start") ?? [];
 
 	const event = {
 		type: "before_agent_start",
@@ -183,8 +277,40 @@ function runHandler({
 		},
 		systemPromptOptions: options,
 	};
-	for (const handler of handlers) handler(event);
+	for (const handler of handlers)
+		(handler as unknown as (event: unknown) => void)(event);
 	return options;
+}
+
+/** One `ui.notify` call the fake context recorded. */
+interface Notification {
+	message: string;
+	type: string | undefined;
+}
+
+/**
+ * Fire `session_start` with a context that records notifications and answers
+ * `getBranch()` with `branch`. Every CLI session load reports `reason:
+ * "startup"`, resume included (pi 1.4.0, probe extension), so detection reads
+ * the branch rather than the reason.
+ */
+function runSessionStart(
+	handlers: Map<string, Array<(event: never, ctx: never) => unknown>>,
+	{ branch = [] }: { branch?: readonly SessionEntry[] } = {},
+): Notification[] {
+	const notifications: Notification[] = [];
+	const ctx = {
+		ui: {
+			notify(message: string, type?: string) {
+				notifications.push({ message, type });
+			},
+		},
+		sessionManager: { getBranch: () => [...branch] },
+	};
+	const event: SessionStartEvent = { type: "session_start", reason: "startup" };
+	for (const handler of handlers.get("session_start") ?? [])
+		(handler as unknown as (event: unknown, ctx: unknown) => void)(event, ctx);
+	return notifications;
 }
 
 // ── path extraction ───────────────────────────────────────────────────
@@ -683,6 +809,164 @@ check(
 		}
 	},
 );
+
+// ── the recorded prompt ───────────────────────────────────────────────
+
+/**
+ * Resume `recorded` under `install`, in the agent dir the fixture was recorded
+ * in, so a matching install advertises exactly the recorded path.
+ */
+function resume(
+	recorded: readonly SessionEntry[],
+	install: string,
+	deps: DocsSkillDeps = {},
+): Notification[] {
+	return withEnv("PI_CODING_AGENT_DIR", RECORDED_AGENT_DIR, () =>
+		runSessionStart(
+			registerExtension({
+				...deps,
+				installId: () => install,
+				recordedEntries: () => recorded,
+			}),
+		),
+	);
+}
+
+check("replays the sections a real session recorded", () => {
+	const sections = replayPromptSections(RECORDED_ENTRIES);
+	assert.equal(sections?.skills, RECORDED_SKILLS);
+	assert.match(sections?.preamble ?? "", /^You are an expert coding assistant/);
+	// A patch replaces its own section and leaves the rest alone.
+	const resumed = replayPromptSections(PIBOLT_RECORDED);
+	assert.equal(resumed?.skills, PIBOLT_SKILLS);
+	assert.equal(resumed?.preamble, sections?.preamble);
+	// Nothing recorded — a fresh session — is not something to guess about.
+	assert.equal(replayPromptSections([]), undefined);
+	// A `null` patch removes the section rather than blanking it.
+	const removed = replayPromptSections([
+		...RECORDED_ENTRIES,
+		systemEntry({ skills: null }),
+	]);
+	assert.equal("skills" in (removed ?? {}), false);
+});
+
+check(
+	"reads the pi-docs path and install id out of a recorded skills section",
+	() => {
+		assert.equal(
+			recordedSkillPath(RECORDED_SKILLS),
+			`${RECORDED_AGENT_DIR}/cache/pi-system-prompt-trim/pi-coding-agent/pi-docs/SKILL.md`,
+		);
+		assert.equal(
+			recordedSkillPath(PIBOLT_SKILLS),
+			`${RECORDED_AGENT_DIR}/cache/pi-system-prompt-trim/pi-bolt/pi-docs/SKILL.md`,
+		);
+		assert.equal(
+			cacheInstallId(recordedSkillPath(RECORDED_SKILLS) as string),
+			"pi-coding-agent",
+		);
+		// A user's own pi-docs is not this extension's to judge.
+		assert.equal(
+			cacheInstallId("/home/me/.pi/agent/skills/pi-docs/SKILL.md"),
+			undefined,
+		);
+		// A `pi-docs` block with no location must not borrow another skill's.
+		const noLocation = [
+			"<skills><available_skills>",
+			"<skill><name>other</name><location>/tmp/other/SKILL.md</location></skill>",
+			"<skill><name>pi-docs</name></skill>",
+			"</available_skills></skills>",
+		].join("\n");
+		assert.equal(recordedSkillPath(noLocation), undefined);
+		assert.equal(recordedSkillPath("<skills>\n</skills>"), undefined);
+	},
+);
+
+check("warns once when a session recorded by pi resumes under pi-bolt", () => {
+	// The recorded prompt carries the pi-coding-agent path; this run advertises
+	// the pi-bolt one, so the next request rewrites `<skills>` and loses the cache.
+	const notifications = resume(RECORDED_ENTRIES, "pi-bolt");
+	assert.equal(notifications.length, 1);
+	assert.equal(notifications[0].type, "warning");
+	assert.match(notifications[0].message, /recorded by pi \(pi-coding-agent\)/);
+	assert.match(notifications[0].message, /running under Pi-Bolt \(pi-bolt\)/);
+	assert.match(notifications[0].message, new RegExp(SKILL_NAME));
+	assert.match(notifications[0].message, /cached prompt prefix/);
+});
+
+check("warns once even when the branch recorded several patches", () => {
+	// Same session, resumed the other way round: pi-bolt recorded the patch, this
+	// run is pi. Two system messages, one prompt, one warning.
+	const notifications = resume(PIBOLT_RECORDED, "pi-coding-agent");
+	assert.equal(notifications.length, 1);
+	assert.match(notifications[0].message, /recorded by Pi-Bolt \(pi-bolt\)/);
+	assert.match(
+		notifications[0].message,
+		/running under pi \(pi-coding-agent\)/,
+	);
+});
+
+check("stays quiet when nothing changed or nothing was recorded", () => {
+	// The pi-bolt run recorded its own path: verified on a real session, three
+	// resumes under the same install appended no patch.
+	assert.deepEqual(resume(PIBOLT_RECORDED, "pi-bolt"), []);
+	// `new` carries no recorded prompt at all.
+	assert.deepEqual(resume([], "pi-bolt"), []);
+	// Recorded before this extension was installed, so the skill was never named.
+	assert.deepEqual(
+		resume(
+			[systemEntry({ preamble: "You are an expert coding assistant." })],
+			"pi-bolt",
+		),
+		[],
+	);
+});
+
+check("stays quiet when the recorded prompt cannot be read", () => {
+	// Fail closed: an unreadable or unexpected session must not cost the run.
+	for (const recordedEntries of [
+		() => undefined,
+		() => {
+			throw new Error("unreadable session");
+		},
+	]) {
+		const notifications = withEnv(
+			"PI_CODING_AGENT_DIR",
+			RECORDED_AGENT_DIR,
+			() =>
+				runSessionStart(
+					registerExtension({ installId: () => "pi-bolt", recordedEntries }),
+				),
+		);
+		assert.deepEqual(notifications, []);
+	}
+});
+
+check("names the path when it moved under the same install", () => {
+	// Same install, different agent dir: the cache still breaks, but no install
+	// change may be claimed.
+	const notifications = withEnv("PI_CODING_AGENT_DIR", "/tmp/other-agent", () =>
+		runSessionStart(
+			registerExtension({
+				installId: () => "pi-coding-agent",
+				recordedEntries: () => RECORDED_ENTRIES,
+			}),
+		),
+	);
+	assert.equal(notifications.length, 1);
+	assert.match(notifications[0].message, /\/tmp\/other-agent\//);
+	assert.doesNotMatch(notifications[0].message, /recorded by/);
+});
+
+check("falls back to the session branch when no reader is injected", () => {
+	const notifications = withEnv("PI_CODING_AGENT_DIR", RECORDED_AGENT_DIR, () =>
+		runSessionStart(registerExtension({ installId: () => "pi-bolt" }), {
+			branch: RECORDED_ENTRIES,
+		}),
+	);
+	assert.equal(notifications.length, 1);
+	assert.equal(notifications[0].type, "warning");
+});
 
 // ── the package ───────────────────────────────────────────────────────
 
