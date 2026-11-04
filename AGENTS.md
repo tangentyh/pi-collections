@@ -74,6 +74,7 @@ When adding an extension, add it to both.
 npm install            # once, installs the whole workspace
 npm run typecheck      # typecheck all extensions from the root
 npm run lint           # biome check (format + lint); `npm run format` writes fixes
+npm test               # check:packages, then every extension's suite
 npm run check:packages # manifest/changelog rules pi and publish.yml rely on
 npm run start:<name>   # launch pi with one extension loaded, e.g. start:scroll-speed
                        # (same as `pi -e ./extensions/<name>/<name>.ts`)
@@ -81,10 +82,10 @@ npm run start:<name>   # launch pi with one extension loaded, e.g. start:scroll-
 
 Every extension declares a `test` script in its own `package.json` (an
 `echo "no tests"` placeholder when it has no suite): plain `npm test` at the
-root runs every suite via npm workspaces, `npm test -w <pkg-name>` runs one
-(e.g. `npm test -w pi-sticky-last-prompt`). Suites live in
-`extensions/<name>/tests/` as erasable-only TypeScript that Node runs
-directly, headlessly against the real installed pi-tui.
+root runs `check:packages` and then every suite via npm workspaces,
+`npm test -w <pkg-name>` runs one (e.g. `npm test -w pi-sticky-last-prompt`).
+Suites live in `extensions/<name>/tests/` as erasable-only TypeScript that Node
+runs directly, headlessly against the real installed pi-tui.
 
 A test's expectation comes from outside the code — a vendor table, a spec, the
 bug report it reproduces — pasted as a literal, never recomputed from the
@@ -100,10 +101,11 @@ and a flake gets deleted.
 preset) must pass: fix or `biome-ignore`-with-reason anything it reports, except
 the accepted `noExplicitAny` / `noNonNullAssertion` warnings (deliberate
 defensive access to pi internals). A `pre-commit` hook checks staged files and
-a `pre-push` hook runs typecheck + tests + `npm run check:packages` (installed
-by the root `prepare` script); `.github/workflows/ci.yml` enforces lint +
-typecheck + `check:packages` + tests on push/PR, since hooks are bypassable
-with `--no-verify`.
+a `pre-push` hook runs typecheck + tests (installed by the root `prepare`
+script); `.github/workflows/ci.yml` enforces lint + typecheck + tests on
+push/PR, since hooks are bypassable with `--no-verify`. The test run carries
+`check:packages`, so those hooks and CI cannot pass a release whose changelog
+pi or `publish.yml` cannot read.
 
 `pi install ./extensions/<name>` records a local path in
 `~/.pi/agent/settings.json` without copying; edited files take effect in a

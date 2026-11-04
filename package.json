@@ -17,7 +17,7 @@
 		"lint": "biome check .",
 		"check:packages": "node scripts/check-packages.ts",
 		"format": "biome format --write .",
-		"test": "npm test --workspaces",
+		"test": "npm run check:packages && npm test --workspaces",
 		"start:scroll-speed": "pi -e ./extensions/scroll-speed/scroll-speed.ts",
 		"start:cursor": "pi -e ./extensions/focus-aware-blinking-cursor-and-border/focus-aware-blinking-cursor-and-border.ts",
 		"start:footer-template": "pi -e ./extensions/footer-template/footer-template.ts",
