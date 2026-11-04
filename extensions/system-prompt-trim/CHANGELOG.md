@@ -5,6 +5,33 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] - 2026-11-04
+
+### Added
+
+- `session_start` now warns once, through `ctx.ui.notify`, when a resumed
+  session's recorded `pi-docs` path differs from the one this run advertises.
+  The generated skill's absolute location is rendered into `<skills>` and so is
+  part of the prompt, which means resuming a session under the other install —
+  or under the same install with another agent dir — makes pi record a section
+  patch and invalidates the provider's cached prefix for the rest of the
+  conversation. That cost is outside the extension's control (the path is keyed
+  by install, not version, precisely so a pi update keeps the cache), so it is
+  reported at startup instead of left for the user to notice on the bill.
+- The warning only repeats what the session substantiated: the prompt is
+  replayed from its first system message plus the named-section patches that
+  follow it, only the `skills` section is compared, and nothing is said for a
+  fresh session, an unreadable session, or a recorded `pi-docs` that another
+  file provides. It names the two installs when their ids differ and the two
+  paths when the same install moved; a prompt that changed for any other
+  reason breaks the cache silently, since a guessed cause is worse than
+  silence.
+- Best effort and fail-closed: replayed entries, one string comparison and a
+  single notification — no provider request, no appended entry, and no change
+  to what is trimmed. The resumed branch is the signal, not the event's
+  `reason`: `pi -c`, `pi --session` and `pi --fork` all report `"startup"` in
+  pi 1.4.0, and only a runtime switch says `"resume"`.
+
 ## [0.1.1] - 2026-10-26
 
 ### Changed
