@@ -56,6 +56,8 @@ To load an extension into an already-running pi, `pi install` it first (or drop 
 ```bash
 npm install            # once, installs the whole workspace
 npm run typecheck      # typecheck all extensions from the root
+npm test               # check:packages, then every extension's suite
+npm run check:packages # manifest + CHANGELOG rules pi's update view relies on
 npm run start:scroll-speed   # launch pi with one extension loaded
                          # (same as `pi -e ./extensions/<name>/<name>.ts`)
 ```

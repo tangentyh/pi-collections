@@ -15,13 +15,20 @@ Conventions for AI agents and humans working in this repo. The repo is a
   removed extensions), moved verbatim from `extensions/` plus an `ARCHIVED.md`
   status note. Deliberately outside every automation scope: not an npm
   workspace member, not typechecked (`tsconfig.json` covers only
-  `extensions/**/*.ts`), force-ignored by Biome, invisible to the publish
-  workflow. See `archive/README.md` for the archiving procedure.
+  `extensions/**/*.ts` and `scripts/**/*.ts`), force-ignored by Biome,
+  invisible to the publish workflow. See `archive/README.md` for the archiving
+  procedure.
 - Root `package.json` — **dev wrapper only**:
   - `"private": true`, never published
   - no `pi` manifest → the root is not installable via `pi install`
   - `workspaces: ["extensions/*"]` so one `npm install` at the root installs everything
-- `tsconfig.json` — shared strict TypeScript config (`tsc --noEmit`), includes `extensions/**/*.ts`
+- `scripts/` — repo-level checks that no single package owns:
+  - `check-packages.ts` (`npm run check:packages`) validates the manifest and
+    changelog rules pi needs to show a package's changelog after an update, and
+    that `publish.yml` needs for the Release notes; its header comment holds the
+    rules and their reasons
+- `tsconfig.json` — shared strict TypeScript config (`tsc --noEmit`), includes
+  `extensions/**/*.ts` and `scripts/**/*.ts`
 
 ## Extensions
 
@@ -64,19 +71,21 @@ When adding an extension, add it to both.
 ## Dev loop
 
 ```bash
-npm install          # once, installs the whole workspace
-npm run typecheck    # typecheck all extensions from the root
-npm run lint         # biome check (format + lint); `npm run format` writes fixes
-npm run start:<name> # launch pi with one extension loaded, e.g. start:scroll-speed
-                     # (same as `pi -e ./extensions/<name>/<name>.ts`)
+npm install            # once, installs the whole workspace
+npm run typecheck      # typecheck all extensions from the root
+npm run lint           # biome check (format + lint); `npm run format` writes fixes
+npm test               # check:packages, then every extension's suite
+npm run check:packages # manifest/changelog rules pi and publish.yml rely on
+npm run start:<name>   # launch pi with one extension loaded, e.g. start:scroll-speed
+                       # (same as `pi -e ./extensions/<name>/<name>.ts`)
 ```
 
 Every extension declares a `test` script in its own `package.json` (an
 `echo "no tests"` placeholder when it has no suite): plain `npm test` at the
-root runs every suite via npm workspaces, `npm test -w <pkg-name>` runs one
-(e.g. `npm test -w pi-sticky-last-prompt`). Suites live in
-`extensions/<name>/tests/` as erasable-only TypeScript that Node runs
-directly, headlessly against the real installed pi-tui.
+root runs `check:packages` and then every suite via npm workspaces,
+`npm test -w <pkg-name>` runs one (e.g. `npm test -w pi-sticky-last-prompt`).
+Suites live in `extensions/<name>/tests/` as erasable-only TypeScript that Node
+runs directly, headlessly against the real installed pi-tui.
 
 A test's expectation comes from outside the code — a vendor table, a spec, the
 bug report it reproduces — pasted as a literal, never recomputed from the
@@ -94,7 +103,9 @@ the accepted `noExplicitAny` / `noNonNullAssertion` warnings (deliberate
 defensive access to pi internals). A `pre-commit` hook checks staged files and
 a `pre-push` hook runs typecheck + tests (installed by the root `prepare`
 script); `.github/workflows/ci.yml` enforces lint + typecheck + tests on
-push/PR, since hooks are bypassable with `--no-verify`.
+push/PR, since hooks are bypassable with `--no-verify`. The test run carries
+`check:packages`, so those hooks and CI cannot pass a release whose changelog
+pi or `publish.yml` cannot read.
 
 `pi install ./extensions/<name>` records a local path in
 `~/.pi/agent/settings.json` without copying; edited files take effect in a
@@ -118,7 +129,7 @@ Follow the layout and naming conventions above; concretely:
 2. Add a `"start:<name>": "pi -e ./extensions/<name>/<name>.ts"` script to the
    root `package.json`.
 3. Run `npm install` at the root so the workspace links the new package, then
-   `npm run typecheck` must pass.
+   `npm run typecheck` and `npm run check:packages` must pass.
 4. Add the extension to the list in this file (`## Extensions`) and to the table
    in `README.md` (`## What's here`) — same order, names, descriptions in both.
 5. Before its **first** publish: configure the Trusted Publisher for `pi-<name>`
@@ -140,6 +151,11 @@ the extension's `CHANGELOG.md` as the release notes (annotated tag message,
 then GitHub-generated notes, as fallbacks). It is idempotent: a version already
 on the registry — the hand-published first one, or a re-run after a partial
 failure — skips `npm publish` and only ensures the Release exists.
+
+Bumping a version means adding that version's `## [<version>]` section in the
+same PR: `npm run check:packages` fails when the newest changelog entry is not
+the manifest version, and pi shows nothing for a release whose changelog has no
+entry for it.
 
 Release flow:
 
@@ -172,6 +188,11 @@ Gotchas:
 - Every extension ships its own `README.md`, `CHANGELOG.md`, and `LICENSE`
   (MIT). The changelog follows the Keep a Changelog format and starts with
   the initial `[0.1.0]` entry; every release adds an entry for its version.
+  Headings stay `## [x.y.z] - YYYY-MM-DD` and every `##` line in the file is a
+  version heading — pi cuts an entry at the next `##` line, and `publish.yml`
+  cuts Release notes at an exact `## [<version>]` line, so anything else
+  silently truncates the entry above it (`npm run check:packages` enforces
+  this, the `files` entry, and the version match).
 - **Plans are scaffolds, not docs.** `extensions/<name>/docs/PLAN-*.md` lives
   only while the work is pending and is **deleted in the PR that lands it** —
   not kept with a status header (an implemented plan's target-state and step
