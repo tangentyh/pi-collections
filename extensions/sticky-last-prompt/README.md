@@ -36,7 +36,8 @@ Or add it to the `packages` array in `~/.pi/agent/settings.json`:
   until the message is entirely out of view and it becomes the pin. While a
   newer prompt is crossing, older fully-hidden prompts do not keep the pin —
   the bar just stays blank until the newer one clears the edge. Text is
-  whitespace-collapsed to one line, ellipsized if too long, and themed with
+  whitespace-collapsed, wrapped to at most `maxLines` rows (one by default,
+  see Configuration), ellipsized if still too long, and themed with
   your active theme (`accent` icon on a `selectedBg` strip). Skill
   invocations count as prompts too — pi renders them as collapsible
   `[skill] name` blocks rather than user messages — and are pinned under
@@ -47,13 +48,30 @@ Or add it to the `packages` array in `~/.pi/agent/settings.json`:
   built-in search jump.
 - Everything else keeps stock behavior: mouse wheel, text selection,
   scrollbar, right-click paste, middle click, drags. The extension swallows
-  precisely one gesture — a left-button press inside the bar row.
+  precisely one gesture — a left-button press inside the bar rows.
 - On `/reload` or when starting on an existing session, the bar re-derives
   from the rendered transcript — no seeding step; it just tracks wherever
   the viewport opens.
 
 Requires fullscreen TUI mode (pi ≥ 0.84); in regular mode the extension
 stays dormant.
+
+## Configuration
+
+Set `stickyLastPrompt.maxLines` in global settings
+(`~/.pi/agent/settings.json`) or trusted project settings
+(`.pi/settings.json`) to let a long prompt wrap over several rows:
+
+```json
+{
+  "stickyLastPrompt": { "maxLines": 3 }
+}
+```
+
+The default is `1` (one ellipsized row). Values are capped at `20`; a
+non-number or a value below `1` keeps the single row. The setting is read
+at session start, so run `/reload` after changing it. A taller bar covers
+more transcript rows, and a click lands the message just below it.
 
 ## How it works
 
@@ -75,7 +93,7 @@ stops working but nothing else breaks.
   working: the extension reports "no overlay" to pi while its own
   non-capturing bar is the only overlay shown. When another overlay is on top
   (search box, dialogs), stock pi suppression applies.
-- The bar covers the top transcript row while shown.
+- The bar covers the top transcript row (or `maxLines` rows) while shown.
 - Message offsets are re-measured whenever content height changes (e.g.
   while a response streams in). The walk renders each message component
   individually instead of one chat-block render, so that cost grows with

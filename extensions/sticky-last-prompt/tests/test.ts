@@ -1072,6 +1072,129 @@ async function runTests(
 		}
 	}
 
+	// ── stickyLastPrompt.maxLines wraps the bar over several rows ──
+	// A long prompt wraps to the configured row count, the last row is
+	// ellipsized, a click on any row jumps, and the jump lands the message
+	// below the taller bar. Unset or invalid values keep the one-row bar.
+	{
+		const longPrompt = Array.from({ length: 40 }, (_, i) => `word${i}`).join(
+			" ",
+		);
+		const mount = async (stickySettings: unknown, text = longPrompt) => {
+			const wrapTui = new TuiAltScreen(fakeTerminal);
+			const wrapDoc = new Container();
+			wrapDoc.addChild(lines(5, "wrap-pad"));
+			const prompt = new UserMessageComponent(text);
+			wrapDoc.addChild(prompt);
+			wrapDoc.addChild(lines(40, "wrap-tail"));
+			const wrapView = new ScrollView(wrapDoc, {
+				primary: true,
+				scrollbar: "always",
+			});
+			wrapTui.setLayoutRoot(wrapView);
+			const wrapHandlers: Record<string, (...args: any[]) => unknown> = {};
+			let wrapFactory: WidgetFactory | undefined;
+			const wrapCtx = {
+				mode: "tui",
+				hasUI: true,
+				ui: {
+					setWidget: (_id: string, fn?: WidgetFactory) => {
+						wrapFactory = fn;
+					},
+				},
+			};
+			stickyLastPrompt({
+				on: (event: string, handler: (...args: any[]) => unknown) => {
+					wrapHandlers[event] = handler;
+				},
+				getSettings: () => ({ stickyLastPrompt: stickySettings }),
+			} as unknown as ExtensionAPI);
+			await wrapHandlers["session_start"]({}, wrapCtx);
+			wrapFactory!(wrapTui, fakeTheme);
+			wrapTui.start();
+			wrapTui.renderNow(true); // lay out content before scrolling
+			const start = 5;
+			wrapView.scrollTo(start + prompt.render(innerWidth).length, {
+				disableFollow: true,
+			});
+			wrapTui.renderNow(true);
+			const stack = (
+				wrapTui as unknown as {
+					overlayStack?: readonly { component?: unknown }[];
+				}
+			).overlayStack;
+			const bar = stack
+				?.map((entry) => entry.component)
+				.find(
+					(c): c is BarLike =>
+						!!c && typeof (c as BarLike).renderedRows === "number",
+				);
+			assert.ok(bar, "wrap scenario: bar overlay present");
+			const rows = bar.render(80).map(stripAnsi);
+			const shutdown = async () => {
+				await wrapHandlers["session_shutdown"]({}, wrapCtx);
+				wrapTui.stop();
+			};
+			return { wrapTui, wrapView, bar, rows, start, shutdown };
+		};
+
+		const wrapped = await mount({ maxLines: 3 });
+		assert.equal(wrapped.rows.length, 3, "maxLines: 3 renders three rows");
+		assert.equal(wrapped.bar.renderedRows, 3, "hit-test height follows rows");
+		assert.match(wrapped.rows[0], /word0 word1/, "first row starts the prompt");
+		assert.match(
+			wrapped.rows[1],
+			/^ {3}word/,
+			"continuation rows align under the label",
+		);
+		assert.match(wrapped.rows[2], /…\s*$/, "last row is ellipsized");
+		assert.doesNotMatch(
+			wrapped.rows.join(""),
+			/word39/,
+			"text past the last row is cut",
+		);
+		for (const row of wrapped.rows) {
+			assert.equal(row.length, 80, "every row spans the full width");
+		}
+		(
+			wrapped.wrapTui as unknown as {
+				handleViewportInput(data: string): unknown;
+			}
+		).handleViewportInput("\x1b[<0;11;3M"); // left press on the third row
+		assert.equal(
+			wrapped.wrapView.scrollTop,
+			Math.max(0, wrapped.start - 3),
+			"click on a lower row jumps, landing the prompt below the 3-row bar",
+		);
+		await wrapped.shutdown();
+
+		for (const invalid of [
+			undefined,
+			{ maxLines: "3" },
+			{ maxLines: 0 },
+			{ maxLines: -2 },
+		]) {
+			const single = await mount(invalid);
+			assert.equal(
+				single.rows.length,
+				1,
+				`maxLines ${JSON.stringify(invalid)} keeps one row`,
+			);
+			assert.match(single.rows[0], /…\s*$/, "single row is ellipsized");
+			await single.shutdown();
+		}
+
+		// ~3000 columns: far more than 20 rows at this width.
+		const huge = Array.from({ length: 400 }, (_, i) => `w${i}`).join(" ");
+		const capped = await mount({ maxLines: 500 }, huge);
+		assert.equal(
+			capped.rows.length,
+			20,
+			"maxLines is capped so the bar cannot cover the transcript",
+		);
+		await capped.shutdown();
+	}
+
 	// ── uninstall (session_shutdown) removes instance overrides ────
 	await handlers["session_shutdown"]({}, ctx);
 	assert.equal(
