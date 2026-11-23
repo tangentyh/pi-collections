@@ -44,7 +44,10 @@ and a shorter **window name** — then applies them:
 
 - the pi session name (unless `autoRename.surfaces.renamePiSession` is off), and
 - the window name to each enabled surface: tmux window, herdr pane, herdr tab,
-  zellij pane, zellij tab.
+  zellij pane, zellij tab. The herdr writes require `HERDR_PANE_ID`, which
+  herdr sets in every pane it manages; without it nothing is written, because
+  herdr's own `pane current` lookup targets the *focused* pane, which may
+  belong to another client.
 
 A `session_start` sync also applies a window name derived from an existing
 deliberate session name, so resuming a named session re-labels its surfaces.
@@ -117,8 +120,8 @@ honored only in trusted projects (`ctx.isProjectTrusted()`).
 | `autoRename.windowNameMaxLength` | integer | unset | Override the window-name length budget |
 | `autoRename.sessionNameMaxLength` | integer | unset | Override the session-name length budget |
 | `autoRename.surfaces.renamePiSession` | boolean | `true` | Rename the pi session |
-| `autoRename.surfaces.renameHerdrPane` | boolean | `true` | Rename the herdr pane |
-| `autoRename.surfaces.renameHerdrTab` | boolean | `true` | Rename the herdr tab |
+| `autoRename.surfaces.renameHerdrPane` | boolean | `true` | Rename the herdr pane (requires `HERDR_PANE_ID`) |
+| `autoRename.surfaces.renameHerdrTab` | boolean | `true` | Rename the herdr tab (requires `HERDR_PANE_ID`) |
 | `autoRename.surfaces.renameTmuxWindow` | boolean | `true` | Rename the tmux window |
 | `autoRename.surfaces.renameZellijPane` | boolean | `true` | Rename the zellij pane |
 | `autoRename.surfaces.renameZellijTab` | boolean | `true` | Rename the zellij tab |

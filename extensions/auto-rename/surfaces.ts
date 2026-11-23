@@ -147,45 +147,34 @@ interface HerdrTabInfo {
 	tab?: { tab_id?: string; label?: string; number?: number };
 }
 
-/**
- * Resolve the pane (and tab) this pi process runs in. Prefers the herdr env
- * vars; when `HERDR_PANE_ID` is missing (pi launched from a shell herdr did
- * not inject env into), falls back to `herdr pane current` — herdr identifies
- * pi's pane via its `herdr:pi` agent integration, so the call returns the pane
- * pi is running in without any env hints.
- */
-async function herdrCurrentIds(
-	pi: ExtensionAPI,
-): Promise<{ paneId: string; tabId?: string } | undefined> {
+function logHerdrSkip(surface: string): void {
 	const env = getSurfacesEnv();
-	if (env.HERDR_PANE_ID) {
-		return { paneId: env.HERDR_PANE_ID, tabId: env.HERDR_TAB_ID || undefined };
-	}
-	try {
-		const r = await pi.exec("herdr", ["pane", "current"], { timeout: 5000 });
-		const pane = JSON.parse(r.stdout)?.result?.pane as
-			| { pane_id?: string; tab_id?: string }
-			| undefined;
-		const paneId = pane?.pane_id;
-		if (!paneId) {
-			debug("herdrCurrentIds: `pane current` returned no pane_id");
-			return undefined;
-		}
-		debug("herdrCurrentIds: resolved via `herdr pane current`", {
-			paneId,
-			tabId: pane?.tab_id,
-		});
-		return { paneId, tabId: pane?.tab_id };
-	} catch (error) {
-		debug("herdrCurrentIds: failed", String(error));
+	debug(`${surface}: skipped (no HERDR_PANE_ID)`, {
+		reason:
+			"herdr injects HERDR_PANE_ID into every pane it manages; without it herdr's own commands target the focused pane, which may belong to the user or another client, so there is no honest self-lookup to rename",
+		HERDR_ENV: env.HERDR_ENV,
+	});
+}
+
+/**
+ * Resolve the pane (and tab) this pi process runs in, or undefined outside a
+ * herdr pane. No `herdr pane current` fallback: without the id it answers with
+ * the UI-focused pane of whatever client is in front, not the caller's.
+ */
+function herdrCurrentIds(): { paneId: string; tabId?: string } | undefined {
+	const env = getSurfacesEnv();
+	const paneId = env.HERDR_PANE_ID;
+	if (!paneId) {
+		logHerdrSkip("herdrCurrentIds");
 		return undefined;
 	}
+	return { paneId, tabId: env.HERDR_TAB_ID || undefined };
 }
 
 async function herdrPaneInfo(
 	pi: ExtensionAPI,
 ): Promise<HerdrPaneInfo | undefined> {
-	const ids = await herdrCurrentIds(pi);
+	const ids = herdrCurrentIds();
 	if (!ids) {
 		debug("herdrPaneInfo: skipped (could not resolve current pane)");
 		return undefined;
@@ -217,7 +206,7 @@ async function renameHerdrPane(
 	name: string,
 	always: boolean,
 ): Promise<void> {
-	const ids = await herdrCurrentIds(pi);
+	const ids = herdrCurrentIds();
 	if (!ids) {
 		debug("renameHerdrPane: skipped (could not resolve current pane)");
 		return;
@@ -242,7 +231,7 @@ async function renameHerdrTab(
 	name: string,
 	always: boolean,
 ): Promise<void> {
-	const ids = await herdrCurrentIds(pi);
+	const ids = herdrCurrentIds();
 	let tabId = ids?.tabId;
 	if (!tabId) {
 		const pane = await herdrPaneInfo(pi);
