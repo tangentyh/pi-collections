@@ -3,13 +3,14 @@
  * the top of pi's fullscreen TUI; click the pinned bar to jump to it.
  *
  * Behavior:
- *   - A one-line bar pins to the very top of the screen showing the latest
+ *   - A bar pins to the very top of the screen showing the latest
  *     prompt that has scrolled completely above the viewport's top edge —
  *     the newest message with not a single row left on screen, so the
  *     pinned jump always targets something invisible. While that newest
  *     above-the-edge message still has rows on screen the bar hides rather
  *     than duplicate text painted directly beneath it; only once the message
  *     is entirely out of view does it become the pin (whitespace collapsed,
+ *     wrapped to `stickyLastPrompt.maxLines` rows — default 1 — then
  *     ellipsized). While a newer prompt is still crossing the edge, older
  *     fully-hidden prompts do NOT keep the pin — the bar just stays blank.
  *     Skill invocations count as prompts too: pi renders them as collapsible
@@ -55,6 +56,7 @@ import {
 	type TUI,
 	truncateToWidth,
 	visibleWidth,
+	wrapTextWithAnsi,
 } from "@earendil-works/pi-tui";
 
 // ═══════════════════════════════════════════════════════════════
@@ -101,6 +103,38 @@ type AltScreen = TUI & {
 
 const WIDGET_ID = "sticky-last-prompt";
 const PIN_ICON = "\uf007"; // nf-fa-thumb_tack, same glyph other pi pins use
+const DEFAULT_MAX_LINES = 1;
+const MAX_LINES_CAP = 20; // keeps a bad setting from covering the transcript
+const LABEL_INDENT = 3; // columns before the label: space, icon, space
+
+interface StickyLastPromptSettings {
+	maxLines?: unknown;
+}
+
+/** Configured row count, capped at MAX_LINES_CAP; non-numbers → default.
+ *  Values below 1 fall through to wrapLabel's single-row path. */
+function resolveMaxLines(value: unknown): number {
+	if (typeof value !== "number" || !Number.isFinite(value))
+		return DEFAULT_MAX_LINES;
+	return Math.min(MAX_LINES_CAP, Math.floor(value));
+}
+
+/** Wrap the label to at most `maxLines` rows; the last kept row gets "…"
+ *  when text remains. One row is the classic single-line truncation. */
+function wrapLabel(
+	text: string,
+	labelWidth: number,
+	maxLines: number,
+): string[] {
+	const width = Math.max(1, labelWidth);
+	if (maxLines <= 1) return [truncateToWidth(text, width, "…")];
+	const rows = wrapTextWithAnsi(text, width);
+	if (rows.length <= maxLines) return rows;
+	const kept = rows.slice(0, maxLines);
+	const last = kept.length - 1;
+	kept[last] = truncateToWidth(`${kept[last]} ${rows[maxLines]}`, width, "…");
+	return kept;
+}
 
 function collapseWhitespace(text: string): string {
 	return text.replace(/\s+/g, " ").trim();
@@ -240,7 +274,7 @@ const EMPTY_COMPONENT: Component = {
 };
 
 // ═══════════════════════════════════════════════════════════════
-// Pin bar — one full-width line pinned to the top of the screen
+// Pin bar — full-width rows pinned to the top of the screen
 // ═══════════════════════════════════════════════════════════════
 
 class PinBar implements Component {
@@ -248,7 +282,10 @@ class PinBar implements Component {
 	renderedRows = 0;
 	private theme: Theme | undefined;
 
-	constructor(private readonly getText: () => string) {}
+	constructor(
+		private readonly getText: () => string,
+		private readonly getMaxLines: () => number,
+	) {}
 
 	setTheme(theme: Theme): void {
 		this.theme = theme;
@@ -266,10 +303,19 @@ class PinBar implements Component {
 			this.renderedRows = 0;
 			return [];
 		}
-		const label = truncateToWidth(text, Math.max(0, width - 4), "…");
-		const line = ` ${theme.fg("accent", PIN_ICON)} ${theme.fg("text", label)}`;
-		this.renderedRows = 1;
-		return [theme.bg("selectedBg", padToWidth(line, width))];
+		const labels = wrapLabel(
+			text,
+			Math.max(0, width - LABEL_INDENT - 1),
+			this.getMaxLines(),
+		);
+		const indent = " ".repeat(LABEL_INDENT);
+		const rows = labels.map((label, index) => {
+			const prefix = index === 0 ? ` ${theme.fg("accent", PIN_ICON)} ` : indent;
+			const line = `${prefix}${theme.fg("text", label)}`;
+			return theme.bg("selectedBg", padToWidth(line, width));
+		});
+		this.renderedRows = rows.length;
+		return rows;
 	}
 
 	invalidate(): void {}
@@ -298,7 +344,22 @@ export default function stickyLastPrompt(pi: ExtensionAPI): void {
 		anchors: UserAnchor[];
 	} | null = null;
 
-	const bar = new PinBar(() => currentSelection()?.text ?? "");
+	let maxLines = DEFAULT_MAX_LINES;
+	const bar = new PinBar(
+		() => currentSelection()?.text ?? "",
+		() => maxLines,
+	);
+
+	function configuredMaxLines(): number {
+		try {
+			const settings = pi.getSettings() as {
+				stickyLastPrompt?: StickyLastPromptSettings;
+			};
+			return resolveMaxLines(settings.stickyLastPrompt?.maxLines);
+		} catch {
+			return DEFAULT_MAX_LINES;
+		}
+	}
 
 	// ─── Transcript access ────────────────────────────────────────
 
@@ -479,6 +540,7 @@ export default function stickyLastPrompt(pi: ExtensionAPI): void {
 		// same extension instance (bindExtensions can emit session_start more
 		// than once) have no shutdown in between.
 		anchorCache = null;
+		maxLines = configuredMaxLines();
 		// Widget factory runs once per session: wires renderer refs, theme,
 		// patches, and overlay; the pin itself resolves per paint.
 		ctx.ui.setWidget(WIDGET_ID, (tui, theme) => {
