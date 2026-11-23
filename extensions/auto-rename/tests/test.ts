@@ -135,7 +135,7 @@ interface Stub {
 }
 
 /** A stub ExtensionAPI that records event handlers and every exec call. */
-function makeStub(): Stub {
+function makeStub(execStdout?: (cmd: string, args: string[]) => string): Stub {
 	const stub: Stub = {
 		pi: undefined as unknown as ExtensionAPI,
 		handlers: new Map(),
@@ -173,7 +173,7 @@ function makeStub(): Stub {
 		},
 		exec: async (cmd: string, args: string[]) => {
 			stub.calls.push({ cmd, args });
-			return { stdout: "", stderr: "", code: 0 };
+			return { stdout: execStdout?.(cmd, args) ?? "", stderr: "", code: 0 };
 		},
 	} as unknown as ExtensionAPI;
 	return stub;
@@ -431,6 +431,70 @@ function handler(stub: Stub, event: string): (...a: unknown[]) => unknown {
 
 const tmuxRename = (stub: Stub) => stub.calls.filter((c) => c.cmd === "tmux");
 
+// ── herdr env helpers ─────────────────────────────────────────────────
+
+const SURFACE_ENV_KEYS = [
+	"HERDR_ENV",
+	"HERDR_PANE_ID",
+	"HERDR_TAB_ID",
+	"TMUX",
+	"TMUX_PANE",
+	"ZELLIJ",
+	"ZELLIJ_PANE_ID",
+] as const;
+
+async function withEnv(
+	vars: Partial<Record<(typeof SURFACE_ENV_KEYS)[number], string>>,
+	fn: () => Promise<void>,
+): Promise<void> {
+	const saved = new Map(SURFACE_ENV_KEYS.map((k) => [k, process.env[k]]));
+	try {
+		for (const key of SURFACE_ENV_KEYS) delete process.env[key];
+		for (const [key, value] of Object.entries(vars)) {
+			if (value !== undefined) process.env[key] = value;
+		}
+		await fn();
+	} finally {
+		for (const key of SURFACE_ENV_KEYS) {
+			const value = saved.get(key);
+			if (value === undefined) delete process.env[key];
+			else process.env[key] = value;
+		}
+	}
+}
+
+/** Default-label JSON, so the renames get past the "default labels only" check. */
+function herdrCli(_cmd: string, args: string[]): string {
+	const [group, verb, target] = args;
+	if (group === "pane" && verb === "get") {
+		return JSON.stringify({
+			pane: {
+				pane_id: target,
+				tab_id: target.replace(/p\d+$/, "t1"),
+				label: "",
+			},
+		});
+	}
+	if (group === "tab" && verb === "get") {
+		return JSON.stringify({ tab: { tab_id: target, number: 1, label: "1" } });
+	}
+	return "";
+}
+
+function herdrCfg(): Config {
+	return makeCfg({
+		surfaces: {
+			renameHerdrPane: true,
+			renameHerdrTab: true,
+			renameTmuxWindow: false,
+		},
+	});
+}
+
+function herdrArgv(stub: Stub): string[][] {
+	return stub.calls.filter((c) => c.cmd === "herdr").map((c) => c.args);
+}
+
 // ── compile + run ─────────────────────────────────────────────────────
 
 interface Mod {
@@ -620,6 +684,74 @@ async function runTests(mod: Mod): Promise<void> {
 				stub.calls.length,
 				0,
 				`expected no exec calls, got ${JSON.stringify(stub.calls)}`,
+			);
+		},
+	);
+
+	// ── 4b. herdr surfaces: written only from inside a herdr pane ────
+	//
+	// Outside herdr, `herdr pane current` answers with the app's UI-focused pane —
+	// taking that as the caller's pane relabelled an unrelated app's pane.
+
+	const surfacesUrl = pathToFileURL(join(tmpDir, "surfaces.js")).href;
+
+	await check(
+		"syncSurfaces never looks up a pane when HERDR_PANE_ID is missing",
+		async () => {
+			const surfaces = (await import(
+				surfacesUrl
+			)) as typeof import("../surfaces.ts");
+			for (const [label, vars] of [
+				["a plain shell", {}],
+				// HERDR_ENV alone names no pane; a missing id means "the focused pane".
+				["herdr without a pane id", { HERDR_ENV: "1" }],
+			] as const) {
+				const stub = makeStub(herdrCli);
+				await withEnv(vars, async () => {
+					await surfaces.syncSurfaces(stub.pi, herdrCfg(), "herdr fallback");
+				});
+				assert.deepEqual(
+					stub.calls,
+					[],
+					`expected no exec from ${label} (no \`pane current\` guess), got ${JSON.stringify(stub.calls)}`,
+				);
+			}
+		},
+	);
+
+	await check(
+		"syncSurfaces with HERDR_PANE_ID set renames that pane and its tab",
+		async () => {
+			const surfaces = (await import(
+				surfacesUrl
+			)) as typeof import("../surfaces.ts");
+			const stub = makeStub(herdrCli);
+			await withEnv(
+				{ HERDR_ENV: "1", HERDR_PANE_ID: "w1R:p1", HERDR_TAB_ID: "w1R:t1" },
+				async () => {
+					await surfaces.syncSurfaces(
+						stub.pi,
+						herdrCfg(),
+						"auto rename herdr leak",
+					);
+				},
+			);
+			const argv = herdrArgv(stub);
+			assert.ok(
+				argv.some(
+					(a) => a.join(" ") === "pane rename w1R:p1 auto rename herdr leak",
+				),
+				`expected \`herdr pane rename w1R:p1\`, got ${JSON.stringify(argv)}`,
+			);
+			assert.ok(
+				argv.some(
+					(a) => a.join(" ") === "tab rename w1R:t1 auto rename herdr leak",
+				),
+				`expected \`herdr tab rename w1R:t1\`, got ${JSON.stringify(argv)}`,
+			);
+			assert.ok(
+				!argv.some((a) => a.join(" ") === "pane current"),
+				`HERDR_PANE_ID is authoritative — no \`pane current\` lookup, got ${JSON.stringify(argv)}`,
 			);
 		},
 	);
